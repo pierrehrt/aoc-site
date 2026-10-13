@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"regexp"
 	"strings"
 	"testing"
@@ -130,9 +132,11 @@ func unique(xs []string) []string {
 // headAsGet routes every HEAD as GET, so a handler registered for HEAD itself would never be reached:
 // a GET route with its own HEAD handler would answer with the GET one, and a HEAD-only route would be
 // a 405. The walk above cannot see either (measured at AOC-079 verify round 1: both planted, it
-// passed), so this refuses them by registration. A route may list HEAD only when it is mounted for
-// every method chi knows (r.Handle, as the assets are), whose handler serves HEAD as it serves GET.
-// "Every method" is chi's own list, read from a probe route, not one written here.
+// passed), so this refuses them by registration: a route may list HEAD only when its HEAD handler is
+// its GET handler (as for the assets, mounted with r.Handle for every method), so what HEAD would
+// have reached is what GET answers. Handlers are compared as chi v5.3.2 compares them (tree.go,
+// equalHandlers): a func by its code pointer, anything else by ==. Its limit: two closures of one
+// function literal count as one handler, so a HEAD handler built from GET's own literal passes.
 func TestNoRouteHasAHeadHandlerOfItsOwn(t *testing.T) {
 	set, err := assets.Load()
 	if err != nil {
@@ -143,32 +147,105 @@ func TestNoRouteHasAHeadHandlerOfItsOwn(t *testing.T) {
 		t.Fatalf("templates.New: %v", err)
 	}
 	h := newHandler(httpx.Build{Version: "test", Commit: "test", Env: "test"}, failingQ{}, tpl, set, "https://example.test")
+	for _, b := range headHandlersOfTheirOwn(t, h) {
+		t.Error(b)
+	}
+}
 
-	methodsOf := func(r chi.Routes) map[string]map[string]bool {
-		m := map[string]map[string]bool{}
-		if err := chi.Walk(r, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
-			if m[route] == nil {
-				m[route] = map[string]bool{}
-			}
-			m[route][method] = true
-			return nil
-		}); err != nil {
-			t.Fatalf("chi.Walk: %v", err)
-		}
-		return m
-	}
+// The check above, against the five ways AOC-079's verify rounds 1 and 2 planted a HEAD handler that
+// nothing reaches (each passed the walk; (c) and (e) also passed round 2's count of methods), one
+// more whose handlers are values rather than funcs (compared by ==), and a route mounted for every
+// method, which it must let through.
+func TestTheHeadCheckRefusesEveryPlant(t *testing.T) {
+	ok := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	teapot := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
+	var others []string // every method chi knows but HEAD, read from a probe route
 	probe := chi.NewRouter()
-	probe.Handle("/", http.NotFoundHandler())
-	every := methodsOf(probe)["/"]
-	if !every[http.MethodHead] || !every[http.MethodPost] {
-		t.Fatalf("chi's every-method set has no HEAD or POST: %v", every)
-	}
-	for route, ms := range methodsOf(h) {
-		if !ms[http.MethodHead] {
-			continue
+	probe.Handle("/", ok)
+	_ = chi.Walk(probe, func(method, _ string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+		if method != http.MethodHead {
+			others = append(others, method)
 		}
-		if len(ms) != len(every) {
-			t.Errorf("%s registers HEAD itself (methods %v): headAsGet routes HEAD as GET, so that handler is never reached", route, ms)
+		return nil
+	})
+	if len(others) < 2 {
+		t.Fatalf("chi's every-method set, read from a probe route: %v", others)
+	}
+	plants := map[string]func(r chi.Router){
+		"(a) GET and its own HEAD": func(r chi.Router) { r.Get("/zz", ok); r.Head("/zz", teapot) },
+		"(b) HEAD only":            func(r chi.Router) { r.Head("/zz", teapot) },
+		"(c) every method, then its own HEAD": func(r chi.Router) {
+			r.Handle("/zz", ok)
+			r.Head("/zz", teapot)
+		},
+		"(d) a mounted router's GET and its own HEAD": func(r chi.Router) {
+			sub := chi.NewRouter()
+			sub.Get("/", ok)
+			sub.Head("/", teapot)
+			r.Mount("/zz", sub)
+		},
+		"(e) each other method, and its own HEAD": func(r chi.Router) {
+			for _, m := range others {
+				r.Method(m, "/zz", ok)
+			}
+			r.Method(http.MethodHead, "/zz", teapot)
+		},
+		"(f) as (c), with handlers that are values, not funcs": func(r chi.Router) {
+			r.Handle("/zz", http.RedirectHandler("/a", http.StatusFound))
+			r.Method(http.MethodHead, "/zz", http.RedirectHandler("/b", http.StatusFound))
+		},
+	}
+	for name, plant := range plants {
+		r := chi.NewRouter()
+		plant(r)
+		if len(headHandlersOfTheirOwn(t, r)) == 0 {
+			t.Errorf("%s: not refused", name)
 		}
 	}
+	ctl := chi.NewRouter()
+	ctl.Handle("/zz", ok)
+	if bad := headHandlersOfTheirOwn(t, ctl); len(bad) > 0 {
+		t.Errorf("a route mounted for every method was refused: %v", bad)
+	}
+}
+
+// headHandlersOfTheirOwn lists every route of r, as chi.Walk lists them, whose HEAD handler is not
+// its GET handler.
+func headHandlersOfTheirOwn(t *testing.T, r chi.Routes) []string {
+	t.Helper()
+	handlers := map[string]map[string]http.Handler{}
+	if err := chi.Walk(r, func(method, route string, h http.Handler, _ ...func(http.Handler) http.Handler) error {
+		if handlers[route] == nil {
+			handlers[route] = map[string]http.Handler{}
+		}
+		handlers[route][method] = h
+		return nil
+	}); err != nil {
+		t.Fatalf("chi.Walk: %v", err)
+	}
+	var bad []string
+	for route, hs := range handlers {
+		if head, ok := hs[http.MethodHead]; ok && !sameHandler(head, hs[http.MethodGet]) {
+			bad = append(bad, fmt.Sprintf("%s has a HEAD handler that is not its GET handler: headAsGet routes HEAD as GET, so it is never reached", route))
+		}
+	}
+	return bad
+}
+
+// sameHandler is chi v5.3.2's equalHandlers (tree.go), which chi uses to tell its own stub apart.
+func sameHandler(a, b http.Handler) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	av, bv := reflect.ValueOf(a), reflect.ValueOf(b)
+	if av.Type() != bv.Type() {
+		return false
+	}
+	if av.Kind() == reflect.Func {
+		return av.Pointer() == bv.Pointer()
+	}
+	if av.Type().Comparable() {
+		return a == b
+	}
+	return false
 }
