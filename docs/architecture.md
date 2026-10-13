@@ -203,7 +203,10 @@ writer must not quietly remove capabilities from everything downstream.
 ## Caching (AOC-026)
 
 Cloudflare's free plan sits in front of the site. The origin decides what it may keep, through one
-header on every response, set in **one place**: `internal/httpx/cache.go`.
+header on every response our router writes, set in **one place**: `internal/httpx/cache.go`.
+Replies Go's `net/http` writes before the router runs carry none (measured 2026-10-13 over a raw
+socket on a local binary: a malformed request line, a missing `Host`, `OPTIONS *`); the class is in
+`api-routes.md` § Conventions, and the edge's rule 1 below never caches a response without one.
 
 **Why it matters more than speed:** Railway bills usage. An uncached origin turns a viral Reddit
 link into an invoice; a cached page costs the same whether ten people read it or ten thousand.
@@ -283,7 +286,8 @@ this order:
 1. **Every request to the apex** —
    - **eligible for cache** — Cloudflare does not cache HTML otherwise;
    - **edge TTL: use `Cache-Control` if present, bypass if not** — so a response without the header
-     is never cached. The origin always sends one; this is the fail-closed backstop;
+     is never cached. Our router sends one on every response it writes; this is the fail-closed
+     backstop for any reply that has none (`net/http`'s own, above);
    - **browser TTL: respect origin** — ⚠️ the zone's `browser_cache_ttl` is **14400** (read
      2026-09-28), which would otherwise stretch pages' `max-age=60` for browsers.
 2. **A request carrying `HX-Request: true` or any `Authorization`** → **not eligible** (bypass).
