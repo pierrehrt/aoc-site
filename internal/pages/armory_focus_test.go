@@ -20,11 +20,12 @@ func TestTheListsControlsKeepIdsFocusCanReturnTo(t *testing.T) {
 	for _, hdr := range []map[string]string{nil, {"HX-Request": "true"}} {
 		body := get(t, h, http.MethodGet, "/armory?rarity=epic&ilvl_min=1&p=2", hdr, "").Body.String()
 		for _, want := range []string{
-			`<a id="pill-0" data-pill data-refocus="#armory-chips [data-pill], #pills-clear"`,
-			`<a id="pill-1" data-pill data-refocus="#armory-chips [data-pill], #pills-clear"`,
-			`<a id="pills-clear" `,
-			`<a id="pager-prev" `, `<a id="pager-next" `, `<a id="pager-1" `, `<span id="pager-2" tabindex="-1" aria-current="page"`,
-			`<a id="sort-toggle" `, `<a id="sort-col-name" `, `<a id="sort-col-ilvl" `,
+			`id="pill-0" data-pill data-refocus="#armory-chips [data-pill], #pills-clear" class=`,
+			`id="pill-1" data-pill data-refocus="#armory-chips [data-pill], #pills-clear" class=`,
+			`id="pills-clear" class=`,
+			`hx-push-url="true" id="pager-prev" class=`, `hx-push-url="true" id="pager-next" class=`,
+			`hx-push-url="true" id="pager-1" class=`, `<span aria-current="page" id="pager-2" tabindex="-1" class=`,
+			`id="sort-toggle" class=`, `id="sort-col-name" class=`, `id="sort-col-ilvl" class=`,
 		} {
 			if !strings.Contains(body, want) {
 				t.Errorf("HX-Request %v: the page has no %s", hdr != nil, want)
