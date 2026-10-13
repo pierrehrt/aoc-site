@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -806,17 +807,48 @@ func TestOnlyLocalHostsAreAccepted(t *testing.T) {
 
 // reapOrphans drops leftover throwaway databases. Best effort: a failure here must never
 // fail a test, because it says nothing about the code under test.
+//
+// ⚠️ Only STALE ones (AOC-070). It used to drop every aoc_test_% database, so two runs on one server
+// (two sessions, two gates) dropped each other's live databases mid-test: 57P01 "terminating
+// connection due to administrator command" and "database does not exist", in tests that pass alone.
 func reapOrphans(t *testing.T, d *sql.DB, ctx context.Context) {
 	t.Helper()
 	names, err := orphanNames(ctx, d)
 	if err != nil {
 		return
 	}
+	now := time.Now()
 	for _, n := range names {
+		if !isStaleTestDB(n, now) {
+			continue
+		}
 		if _, err := d.ExecContext(ctx, "DROP DATABASE IF EXISTS "+n+" WITH (FORCE)"); err == nil {
 			t.Logf("reaped an orphaned test database: %s", n)
 		}
 	}
+}
+
+// staleAfter is how old a throwaway database must be before a later run reaps it (AOC-070). A run's
+// databases live as long as the run: the slowest measured took about 11 minutes, under load from
+// other sessions (2026-10-13). Two hours leaves every run seen so far alone, and what a timeout or a
+// Ctrl-C left behind is still reaped by the next run after that.
+const staleAfter = 2 * time.Hour
+
+// testDBName is the shape freshDatabase gives a name: aoc_test_<UnixNano>_<n>.
+var testDBName = regexp.MustCompile(`^aoc_test_([0-9]+)_[0-9]+$`)
+
+// isStaleTestDB reports whether a throwaway database is old enough to be an orphan, by the time its
+// name records. A name it cannot date is never stale: it is not one this helper made.
+func isStaleTestDB(name string, now time.Time) bool {
+	m := testDBName.FindStringSubmatch(name)
+	if m == nil {
+		return false
+	}
+	nanos, err := strconv.ParseInt(m[1], 10, 64)
+	if err != nil {
+		return false
+	}
+	return now.Sub(time.Unix(0, nanos)) > staleAfter
 }
 
 // orphanNames is split out so the rows are closed by defer on every path — sqlclosecheck
