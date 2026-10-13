@@ -8,9 +8,10 @@
      and the state's own URL. Swapped out of band, so it always describes the rows below.
      Ids by POSITION (AOC-071): htmx gives focus back to an element with the same id after a swap, so
      removing pill N with the keyboard lands on the pill that took its place. Removing the last one
-     leaves no twin, so each pill names where focus goes then (data-refocus, read in armory.html
-     only after the keyboard removed it): the pill before it, else "clear all", which is always
-     drawn. */}}
+     leaves no twin, so each pill names where focus goes then (data-refocus, acted on in armory.html
+     only when the pill held focus as its request left: after the keyboard, or after a click or tap
+     in a browser that focuses a link on press, as Chrome does): the pill before it, else "clear
+     all", which is always drawn. */}}
 {{define "armory_chips"}}
 <span class="font-mono text-[11.5px] text-faint">filters</span>
 {{range $i, $c := .Chips}}<a href="{{$c.URL}}" hx-get="{{$c.URL}}" hx-target="#results" hx-push-url="true" aria-label="Remove the filter {{$c.Label}}" id="pill-{{$i}}" data-pill data-refocus="#armory-chips [data-pill], #pills-clear" class="flex items-center gap-1.5 rounded-[20px] border border-line-soft bg-ink-pill px-2 py-1 font-mono text-[11.5px] font-medium text-paper hover:border-link">{{$c.Label}} <span aria-hidden="true" class="text-muted-2">×</span></a>

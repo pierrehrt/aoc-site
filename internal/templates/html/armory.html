@@ -157,13 +157,15 @@ function aocEnable(root) {
 aocEnable(document);
 document.addEventListener("htmx:load", function (e) { aocEnable(e.detail.elt); });
 document.addEventListener("htmx:oobAfterSwap", function () { aocEnable(document); });
-// Keyboard focus across a swap (AOC-071). htmx gives focus back to an element with the id of the one
-// that had it; pills, the pager and the sort links carry stable ids for that. A pill names in
+// Focus across a swap (AOC-071). htmx gives focus back to an element with the id of the one that
+// had it; pills, the pager and the sort links carry stable ids for that. A pill names in
 // data-refocus where focus goes when the swap leaves it no twin (only the last one removed has none):
 // the first selector that matches, its last match. Read after htmx's own restore, and acted on only
-// when the pill held focus as its request left and focus has since fallen to the page; a click that
-// never focused it (Safari's, a tap) leaves focus where it was, as before this ticket.
-// Noted per element, so another request in flight cannot clear it.
+// when the pill held focus as its request left and focus has since fallen to the page: after the
+// keyboard, and also after a mouse click or a tap in Chrome, which focuses a link on press (no ring
+// is drawn). A click or tap that does not focus the link (Safari's default; not measured here)
+// leaves focus where it was, as before this ticket. Noted per element, so another request in flight
+// cannot clear it.
 var aocHadFocus = new WeakSet();
 document.addEventListener("htmx:beforeRequest", function (e) {
   if (document.activeElement === e.detail.elt) aocHadFocus.add(e.detail.elt);
