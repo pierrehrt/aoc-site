@@ -17,9 +17,11 @@
   before they reach us.
   ⚠️ **Since AOC-024 the site surface is not.** A 404 or 405 on an HTML path (anything outside
   those three) is a small **HTML** page, so a person who mistypes a URL or follows a stale link is
-  not handed `{"error":"not found"}` in their browser; so is a page's own 400
-  (`/armory?sort=bogus`), which to htmx is an HTML **fragment** for `#results` instead
-  (`armory_invalid`). A page's **500** is not HTML: a failed query gets `text/plain` (`internal
+  not handed `{"error":"not found"}` in their browser; so is a page's own 400. To htmx, a refused
+  search or build (`/armory?sort=bogus`, `ilvl_min` above `ilvl_max`, a malformed `gear`) is an HTML
+  **fragment** for `#results` instead (`armory_invalid`, `invalidSearch`), while a bad page number
+  (`/armory?p=0`, `p=abc`) is the small 400 page to htmx too (`httpx.RejectHTML`; both measured
+  2026-10-13, local and live). A page's **500** is not HTML: a failed query gets `text/plain` (`internal
   server error`, `pages.Handler.fail`), to a browser and to htmx alike, and a panic gets the JSON
   500 `httpx.Recover` writes (both measured 2026-10-13: a local binary over an empty database, and
   a panicking test querier; `/armory`, `/armory/{slug}`, `/sitemap.xml`). The shape follows the
@@ -38,7 +40,8 @@
     illegal byte in a header, a repeated `Host`, or a missing `Host` on HTTP/1.1 (on HTTP/1.0 our
     code answers); `417` for an unknown `Expect`; `431` for headers over the limit; `501` for an
     unknown `Transfer-Encoding`; `505` for an unsupported HTTP version; and `OPTIONS *`, answered
-    `200` with an empty body. The three bullets below describe what our router writes, so they do
+    `200` with an empty body (through the apex, Cloudflare answers `OPTIONS *` itself, with a `400`:
+    measured 2026-10-13). The three bullets below describe what our router writes, so they do
     not cover these.
 - **Every response our router writes carries `X-Request-Id`**, echoed from the request if supplied
   and ≤ 64 chars.
@@ -47,7 +50,8 @@
   pages `public, max-age=60, s-maxage=3600, stale-while-revalidate=86400`, `/v1/*`
   `public, max-age=60, s-maxage=600`, assets a year and `immutable`, a 404 or 410 a minute (but
   `no-store` under `/assets/`, where a 404 is a stale hash: `httpx.cachePolicy`), `/health`,
-  errors, writes and HTMX `no-store`, and anything with a session, a `Set-Cookie` or an
+  errors, writes and HTMX `no-store` (a write or an HTMX request is `no-store` whatever its status,
+  a 404 included: `cachePolicy` decides those before the status), and anything with a session, a `Set-Cookie` or an
   `Authorization` header `private, no-store`. Full table: `docs/architecture.md` § Caching.
 - **An error body our code writes on `/v1/*`, `/health` and `/assets/*` has one shape**:
   `{"error": "...", "request_id": "..."}`, except the fallback `Respond` writes when encoding its
