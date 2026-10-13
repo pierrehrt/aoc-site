@@ -188,6 +188,9 @@ maximum (`ilvl_min=80&ilvl_max=70`, which can match nothing by construction), an
 `facets` that is not a boolean. An *unknown value* is not rejected: whether `legendaryy` is a
 rarity, or `not-a-set` a set, is a database question, and the database answers it with an empty
 page. The same holds for `currency` and `set` (AOC-049).
+Since AOC-069 also: any parameter, name or value, holding a NUL byte or invalid UTF-8
+(`q=a%00b`, `place=%FF`). Postgres cannot take either as text, so it was a 500; the check is on the
+whole query string, so it covers every filter here, on `/v1/sources/tree` and on `/armory`.
 
 **Lists (AOC-064).** `rarity`, `equip_location`, `armour_weight`, `class`, `currency`, `set` and
 `place` each take **several values**, repeated (`?rarity=epic&rarity=rare`), comma-separated
@@ -355,7 +358,8 @@ map, tier, raid and unchained flags), costs, set, classes and equip locations. *
 `unchained` includes its place's** (AOC-039): it is true when the source row is flagged *or* the
 place it sits in is an Unchained dungeon — the one expression the list filter uses, so an item found
 by `unchained=true` never denies it on its own page. An unknown slug is a
-**404 through the central error mapper**, with the standard JSON body — never a bare string.
+**404 through the central error mapper**, with the standard JSON body — never a bare string. A slug
+holding a NUL byte or invalid UTF-8 is that 404 too, without a query (AOC-069; it was a 500).
 
 Each source carries **both a name and a slug** for place, region and map — `"place": "Kyllikki's
 Crypt"` beside `"place_slug": "kyllikki-s-crypt"`. The name is what a person reads; the slug is what
