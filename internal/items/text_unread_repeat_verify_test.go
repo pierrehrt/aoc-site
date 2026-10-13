@@ -8,8 +8,8 @@ import (
 // AOC-069 verify round 2. A parameter that takes one value reads the first (q.Get, vs[0]), so on
 // 0.8.1 a bad byte in a REPEAT of it was never read: `q=x&q=%FF`, `limit=5&limit=a%00b` answered 200
 // (measured, local build of v0.8.1 against the dev database), where the same byte in the value read
-// was a 500 (a text filter) or a 400 (the others). The check covers the whole query string, so the
-// repeat is a 400 now and the database is never asked. The first value alone answers 200 here, so
+// was a 500 (a text filter) or a 400 (the others). The check reads every value the query string
+// parses into, repeats included, so the repeat is a 400 now and the database is never asked. The first value alone answers 200 here, so
 // the 400 is the repeat's.
 func TestAByteNoTextCanHoldInARepeatNothingReadsIsA400(t *testing.T) {
 	first := map[string]string{
