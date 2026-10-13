@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type ctxKey int
@@ -138,3 +140,20 @@ func NotFound(w http.ResponseWriter, r *http.Request) { Fail(w, r, ErrNotFound) 
 // return -- Log records every request from statusWriter no matter who wrote the body
 // (verified, AOC-024 verify round 2). It was the claim that went stale, not the behaviour.
 func MethodNotAllowed(w http.ResponseWriter, r *http.Request) { Fail(w, r, ErrMethodNotAllowed) }
+
+// headAsGet routes every HEAD request as the GET of the same path. No route here registers HEAD
+// itself, so this is chi's middleware.GetHead without its lookup, and the lookup was the bug: it
+// asks whether a HEAD route exists, and on a mount's bare path (/v1/items, /v1/taxonomies) it finds
+// the stub chi.Mount registers for every method, so the HEAD reached a sub-router with no HEAD
+// route and answered 405 (AOC-079, measured on chi v5.3.2). A route that ever registers HEAD would
+// be routed as GET too: cmd/api's walk test (every GET route, HEAD against GET) is what notices.
+func headAsGet(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodHead {
+			if rctx := chi.RouteContext(r.Context()); rctx != nil {
+				rctx.RouteMethod = http.MethodGet
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}

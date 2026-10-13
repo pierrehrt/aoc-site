@@ -16,14 +16,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/pierrehrt/aoc-api/internal/assets"
-	"github.com/pierrehrt/aoc-api/internal/builds"
 	"github.com/pierrehrt/aoc-api/internal/db"
 	"github.com/pierrehrt/aoc-api/internal/db/sqlcgen"
 	"github.com/pierrehrt/aoc-api/internal/httpx"
-	"github.com/pierrehrt/aoc-api/internal/items"
-	"github.com/pierrehrt/aoc-api/internal/pages"
 	"github.com/pierrehrt/aoc-api/internal/templates"
 	"github.com/pierrehrt/aoc-api/internal/version"
 )
@@ -90,15 +86,6 @@ func run() error {
 
 	// The origin canonical URLs are built from. Configured, never taken from the request:
 	// see the comment on pages.Handler.baseURL.
-	// The read surface over the armory (AOC-012). ONE service, built here, handed to the JSON
-	// handlers AND to the HTML pages (AOC-047) — never two implementations of the filtering
-	// (CLAUDE.md rule 5b).
-	q := sqlcgen.New(pool)
-	itemsSvc := items.NewService(q)
-	itemsAPI := items.NewHandler(itemsSvc, items.NewTaxonomyService(q))
-	// The gear builder (AOC-051): one service for the Armory page and /v1/builds/compute.
-	buildsSvc := builds.NewService(q)
-	buildsAPI := builds.NewHandler(buildsSvc)
 	// PUBLIC_BASE_URL is the origin of every canonical URL and of the host redirect (AOC-025).
 	// ⛔ Required in production and parsed strictly: unset, it would default to localhost and every
 	// canonical would point there; malformed, the redirect would send the whole site elsewhere. Both
@@ -114,16 +101,11 @@ func run() error {
 	if canonical != nil {
 		routerOpts = append(routerOpts, httpx.WithCanonicalHost(canonical))
 	}
-	site := pages.New(tpl, assetSet, baseURL, itemsSvc, buildsSvc)
 
 	srv := &http.Server{
 		Addr: addr,
-		Handler: httpx.NewRouterWithAPI(build, site.Routes, assetSet.Handler(), func(v1 chi.Router) {
-			v1.Mount("/items", itemsAPI.Routes())
-			v1.Mount("/taxonomies", itemsAPI.TaxonomyRoutes())
-			v1.Mount("/sources", itemsAPI.SourceRoutes())
-			v1.Mount("/builds", buildsAPI.Routes())
-		}, routerOpts...),
+		// The whole application, composed in routes.go over the one database (AOC-079).
+		Handler: newHandler(build, sqlcgen.New(pool), tpl, assetSet, baseURL, routerOpts...),
 		// A server with no timeouts will eventually be held open by a slow or dead
 		// client until it runs out of file descriptors. These are the three that
 		// net/http leaves unset by default.
