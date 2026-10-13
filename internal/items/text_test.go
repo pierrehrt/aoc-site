@@ -39,7 +39,7 @@ func TestAByteNoTextCanHoldIsA400OnEveryParameter(t *testing.T) {
 			t.Errorf("a parameter NAME holding %s -> %d after %d list calls, want 400 and none", bad, rec.Code, q.calls)
 		}
 	}
-	// Text beyond ASCII is still text: no valid request changes (/v1 stays additive).
+	// Text beyond ASCII is still text: well-formed UTF-8 answers as before.
 	for _, ok := range []string{"q=Test%20Caf%C3%A9", "place=test%E2%80%94cave", "q=%F0%9F%97%A1"} {
 		if rec, _ := get(t, &fakeQ{}, "/v1/items?"+ok); rec.Code != http.StatusOK {
 			t.Errorf("%s -> %d, want 200", ok, rec.Code)

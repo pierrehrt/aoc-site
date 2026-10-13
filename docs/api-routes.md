@@ -188,9 +188,14 @@ maximum (`ilvl_min=80&ilvl_max=70`, which can match nothing by construction), an
 `facets` that is not a boolean. An *unknown value* is not rejected: whether `legendaryy` is a
 rarity, or `not-a-set` a set, is a database question, and the database answers it with an empty
 page. The same holds for `currency` and `set` (AOC-049).
-Since AOC-069 also: any parameter, name or value, holding a NUL byte or invalid UTF-8
-(`q=a%00b`, `place=%FF`). Postgres cannot take either as text, so it was a 500; the check is on the
-whole query string, so it covers every filter here, on `/v1/sources/tree` and on `/armory`.
+Since AOC-069 also: a NUL byte or invalid UTF-8 anywhere in the query string, in a parameter's
+value or its name, including a parameter no filter reads (`q=a%00b`, `place=%FF`, `?a%00b=1`,
+`?not_a_filter=%FF`). Before, it depended on the parameter: the eleven text filters (`rarity`,
+`equip_location`, `armour_weight`, `class`, `currency`, `set`, `item_type`, `region`, `tier`, `q`,
+`place`) passed it to Postgres, which refuses both as text, so a 500; the others were already a 400
+by their own parsing; and a name or an unread parameter was ignored, a 200 (measured on 0.8.1). The
+check is on the whole query string, so it covers every filter here, on `/v1/sources/tree` and on
+`/armory`, a filter added later included.
 
 **Lists (AOC-064).** `rarity`, `equip_location`, `armour_weight`, `class`, `currency`, `set` and
 `place` each take **several values**, repeated (`?rarity=epic&rarity=rare`), comma-separated

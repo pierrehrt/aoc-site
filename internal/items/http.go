@@ -117,7 +117,9 @@ func parseFilters(r *http.Request) (Filters, error) {
 	q := r.URL.Query()
 	// A NUL byte or invalid UTF-8 cannot be a text value: Postgres refuses both (SQLSTATE 22021), and
 	// every text filter answered 500 with an ERROR line (AOC-069). Checked on the whole query string,
-	// names included, so a filter added later is covered too; no valid request carries either.
+	// names included, so a filter added later is covered too. The pages are served as UTF-8, so their
+	// links and form send UTF-8; a name or an unread parameter holding either was ignored (200) and
+	// is refused now (DECISIONS.md, 2026-10-13).
 	for k, vs := range q {
 		if !isText(k) {
 			return Filters{}, fmt.Errorf("%w: a parameter name holds a NUL byte or invalid UTF-8", httpx.ErrInvalid)
