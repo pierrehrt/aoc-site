@@ -474,11 +474,12 @@ which re-routes only where it finds no HEAD route, and on a mount's bare path it
 `TestHeadAnswersWhatGetAnswersOnEveryRoute` (`cmd/api`) walks every GET route the application
 registers and every path prefix of one, with and without its trailing slash (so each mount's bare
 path), and holds HEAD to GET's status and Content-Type, with no body. A HEAD handler of a route's
-own would never be reached, so `TestNoRouteHasAHeadHandlerOfItsOwn` refuses any route where the
-handler chi stores for HEAD, an `r.With` or `r.Group` chain included, is not the one it stores for
-GET, compared as chi compares handlers (a func by its code pointer, so two closures of one function
-literal, or one method on two receivers, count as one handler); `chi.Walk` lists HEAD only for the
-assets, mounted for every method with one handler.
+own would never be reached, so `TestNoRouteHasAHeadHandlerOfItsOwn` refuses any route chi's
+`Routes()` lists, at every level and a mount's own `/*` included, whose listed HEAD handler, an
+`r.With` or `r.Group` chain included, is not its listed GET handler, compared as chi compares
+handlers (a func by its code pointer, so two closures of one function literal, or one method on two
+receivers, count as one handler); `chi.Walk` lists HEAD only for the assets, mounted for every
+method with one handler.
 
 ⚠️ **405 responses carry no `Allow` header.** RFC 9110 §15.5.6 requires one; chi does not hand the
 handler the matched route's method set, and synthesising one risks a header that lies. Accepted

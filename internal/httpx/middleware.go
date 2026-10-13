@@ -148,8 +148,9 @@ func MethodNotAllowed(w http.ResponseWriter, r *http.Request) { Fail(w, r, ErrMe
 // (/v1/items, /v1/taxonomies) it finds the stub chi.Mount registers for every method, so the HEAD
 // reached a sub-router with no HEAD route and answered 405 (AOC-079, measured on chi v5.3.2). A
 // HEAD handler added later would never be reached; cmd/api's TestNoRouteHasAHeadHandlerOfItsOwn
-// refuses any route where the handler chi stores for HEAD (an r.With or r.Group chain included) is
-// not the one it stores for GET, compared as chi compares handlers.
+// refuses any route chi's Routes() lists, a mount's own /* included, whose listed HEAD handler (an
+// r.With or r.Group chain included) is not its listed GET handler, compared as chi compares
+// handlers.
 func headAsGet(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodHead {
