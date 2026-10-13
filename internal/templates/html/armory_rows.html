@@ -11,7 +11,7 @@
   <span class="font-mono text-[12px] text-faint">of {{num .Span.Total}}</span>
   <span class="flex-1"></span>
   <span class="font-mono text-[11.5px] text-faint">sort</span>
-  <a href="{{.NextSort}}" hx-get="{{.NextSort}}" hx-target="#results" hx-push-url="true" title="Change the order" class="whitespace-nowrap rounded-[5px] border border-line-control px-[9px] py-1 text-[12px] font-medium text-paper hover:border-link">{{.SortLabel}}</a>
+  <a id="sort-toggle" href="{{.NextSort}}" hx-get="{{.NextSort}}" hx-target="#results" hx-push-url="true" title="Change the order" class="whitespace-nowrap rounded-[5px] border border-line-control px-[9px] py-1 text-[12px] font-medium text-paper hover:border-link">{{.SortLabel}}</a>
 </div>
 <div class="relative lg:min-h-0 lg:flex-1 lg:overflow-auto">
 {{if .Result.Items}}
@@ -31,10 +31,10 @@
   <thead class="sticky top-0 z-[2] bg-ink-pane text-left font-mono text-[10.5px] font-medium uppercase leading-[14px] tracking-[0.06em] text-faint">
     <tr>
       {{/* Item and iLvl sort, as in the design. */}}
-      <th scope="col" class="border-b border-line py-2 pl-4 pr-3 font-medium">{{range .Sorts}}{{if eq .Key "name"}}<a href="{{.URL}}" hx-get="{{.URL}}" hx-target="#results" hx-push-url="true" class="hover:text-paper"{{if .Current}} aria-current="true"{{end}}>Item</a>{{end}}{{end}}</th>
+      <th scope="col" class="border-b border-line py-2 pl-4 pr-3 font-medium">{{range .Sorts}}{{if eq .Key "name"}}<a id="sort-col-name" href="{{.URL}}" hx-get="{{.URL}}" hx-target="#results" hx-push-url="true" class="hover:text-paper"{{if .Current}} aria-current="true"{{end}}>Item</a>{{end}}{{end}}</th>
       <th scope="col" class="border-b border-line hidden py-2 pr-3 font-medium md:table-cell">Slot</th>
       <th scope="col" class="border-b border-line hidden py-2 pr-3 font-medium md:table-cell">Type</th>
-      <th scope="col" class="border-b border-line hidden py-2 pr-3 font-medium md:table-cell">{{range .Sorts}}{{if eq .Key "ilvl"}}<a href="{{.URL}}" hx-get="{{.URL}}" hx-target="#results" hx-push-url="true" class="hover:text-paper"{{if .Current}} aria-current="true"{{end}}>iLvl</a>{{end}}{{end}}</th>
+      <th scope="col" class="border-b border-line hidden py-2 pr-3 font-medium md:table-cell">{{range .Sorts}}{{if eq .Key "ilvl"}}<a id="sort-col-ilvl" href="{{.URL}}" hx-get="{{.URL}}" hx-target="#results" hx-push-url="true" class="hover:text-paper"{{if .Current}} aria-current="true"{{end}}>iLvl</a>{{end}}{{end}}</th>
       <th scope="col" class="border-b border-line hidden py-2 pr-3 font-medium md:table-cell">Class</th>
       <th scope="col" class="border-b border-line hidden py-2 pr-3 font-medium lg:table-cell">Source</th>
       <th scope="col" class="border-b border-line hidden py-2 pr-4 font-medium lg:table-cell">Price</th>
@@ -79,10 +79,12 @@
 {{end}}
 </div>
 {{if .Result.Items}}
+{{/* Every control here keeps one id across pages, a disabled or current one as a span htmx can focus
+     (tabindex -1), so following one with the keyboard keeps focus on it (AOC-071). */}}
 <nav aria-label="Pages" class="flex min-h-[44px] flex-none items-center gap-2 overflow-hidden border-t border-line px-4 font-mono text-[12px] font-medium text-muted">
-  {{if .Prev}}<a href="{{.Prev}}" hx-get="{{.Prev}}" hx-target="#results" hx-push-url="true" class="flex-none whitespace-nowrap rounded-[5px] border border-line-control px-[9px] py-1 text-muted hover:border-link">‹ Prev</a>{{else}}<span class="flex-none whitespace-nowrap rounded-[5px] border border-line-control px-[9px] py-1 text-faint">‹ Prev</span>{{end}}
-  {{range .Pager}}{{if .Current}}<span aria-current="page" class="flex-none rounded-[5px] border border-link bg-ink-selected px-[9px] py-1 text-paper">{{.N}}</span>{{else}}<a href="{{.URL}}" hx-get="{{.URL}}" hx-target="#results" hx-push-url="true" class="flex-none rounded-[5px] border border-line-control px-[9px] py-1 text-muted hover:border-link">{{.N}}</a>{{end}}{{end}}
-  {{if .Next}}<a href="{{.Next}}" hx-get="{{.Next}}" hx-target="#results" hx-push-url="true" class="flex-none whitespace-nowrap rounded-[5px] border border-line-control px-[9px] py-1 text-muted hover:border-link">Next ›</a>{{else}}<span class="flex-none whitespace-nowrap rounded-[5px] border border-line-control px-[9px] py-1 text-faint">Next ›</span>{{end}}
+  {{if .Prev}}<a id="pager-prev" href="{{.Prev}}" hx-get="{{.Prev}}" hx-target="#results" hx-push-url="true" class="flex-none whitespace-nowrap rounded-[5px] border border-line-control px-[9px] py-1 text-muted hover:border-link">‹ Prev</a>{{else}}<span id="pager-prev" tabindex="-1" aria-disabled="true" class="flex-none whitespace-nowrap rounded-[5px] border border-line-control px-[9px] py-1 text-faint">‹ Prev</span>{{end}}
+  {{range .Pager}}{{if .Current}}<span id="pager-{{.N}}" tabindex="-1" aria-current="page" class="flex-none rounded-[5px] border border-link bg-ink-selected px-[9px] py-1 text-paper">{{.N}}</span>{{else}}<a id="pager-{{.N}}" href="{{.URL}}" hx-get="{{.URL}}" hx-target="#results" hx-push-url="true" class="flex-none rounded-[5px] border border-line-control px-[9px] py-1 text-muted hover:border-link">{{.N}}</a>{{end}}{{end}}
+  {{if .Next}}<a id="pager-next" href="{{.Next}}" hx-get="{{.Next}}" hx-target="#results" hx-push-url="true" class="flex-none whitespace-nowrap rounded-[5px] border border-line-control px-[9px] py-1 text-muted hover:border-link">Next ›</a>{{else}}<span id="pager-next" tabindex="-1" aria-disabled="true" class="flex-none whitespace-nowrap rounded-[5px] border border-line-control px-[9px] py-1 text-faint">Next ›</span>{{end}}
   <span class="flex-1"></span>
   <span class="min-w-0 truncate text-faint max-sm:hidden">rows {{num .RowsFrom}}–{{num .RowsTo}} of {{num .Result.Total}} · {{.Result.Limit}} / page</span>
 </nav>

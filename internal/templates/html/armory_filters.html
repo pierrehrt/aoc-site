@@ -5,11 +5,15 @@
 {{/* The collapsed strip's "N active" (the design's), swapped out of band like the button's number. */}}
 {{define "armory_active"}}{{.Active}} active{{end}}
 {{/* The search block's last row (design): "filters", one pill per active filter with ×, "clear all",
-     and the state's own URL. Swapped out of band, so it always describes the rows below. */}}
+     and the state's own URL. Swapped out of band, so it always describes the rows below.
+     Ids by POSITION (AOC-071): htmx gives focus back to an element with the same id after a swap, so
+     removing pill N with the keyboard lands on the pill that took its place; removing the last one
+     has no twin, so it names where focus goes instead (data-refocus, read in armory.html): the pill
+     before it, else "clear all", which is always drawn. */}}
 {{define "armory_chips"}}
 <span class="font-mono text-[11.5px] text-faint">filters</span>
-{{range .Chips}}<a href="{{.URL}}" hx-get="{{.URL}}" hx-target="#results" hx-push-url="true" aria-label="Remove the filter {{.Label}}" class="flex items-center gap-1.5 rounded-[20px] border border-line-soft bg-ink-pill px-2 py-1 font-mono text-[11.5px] font-medium text-paper hover:border-link">{{.Label}} <span aria-hidden="true" class="text-muted-2">×</span></a>
-{{end}}<a href="{{.ClearAll}}" hx-get="{{.ClearAll}}" hx-target="#results" hx-push-url="true" class="font-mono text-[11.5px] text-faint underline hover:text-paper">clear all</a>
+{{range $i, $c := .Chips}}<a id="pill-{{$i}}" data-pill data-refocus="#armory-chips [data-pill], #pills-clear" href="{{$c.URL}}" hx-get="{{$c.URL}}" hx-target="#results" hx-push-url="true" aria-label="Remove the filter {{$c.Label}}" class="flex items-center gap-1.5 rounded-[20px] border border-line-soft bg-ink-pill px-2 py-1 font-mono text-[11.5px] font-medium text-paper hover:border-link">{{$c.Label}} <span aria-hidden="true" class="text-muted-2">×</span></a>
+{{end}}<a id="pills-clear" href="{{.ClearAll}}" hx-get="{{.ClearAll}}" hx-target="#results" hx-push-url="true" class="font-mono text-[11.5px] text-faint underline hover:text-paper">clear all</a>
 <span class="flex-1"></span>
 <span class="hidden max-w-[52%] truncate font-mono text-[11.5px] text-faint sm:inline">{{.URL}}</span>
 {{end}}

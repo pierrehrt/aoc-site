@@ -618,8 +618,14 @@ is the visual source of truth, distilled from `discovery/design/armory-2026-10-0
   (`hx-swap-oob="innerHTML:#…"`), so once an answer has landed (and no press on a slider holds
   its pane back; see below) the counts describe the rows beside them, and the hidden inputs and the
   sort match its state. Inputs keep stable ids, so HTMX hands
-  focus back after the swap. `HX-Push-Url` is the state's canonical URL, not the form's raw query with its empty
-  fields.
+  focus back after the swap. So do the links (AOC-071): the pills by position (`pill-<n>`, so
+  removing one lands on the pill that took its place), `pills-clear`, the pager (`pager-prev`,
+  `pager-next`, `pager-<n>`; a disabled or current one is a span with `tabindex="-1"`) and the sort
+  links (`sort-toggle`, `sort-col-<key>`). The last pill removed has no twin, so it carries
+  `data-refocus` (the pill before it, else "clear all"), which a small `htmx:afterSettle` listener in
+  `armory.html` reads only if focus fell to the page. Measured in Chrome with the keyboard; the ids
+  are pinned by `TestTheListsControlsKeepIdsFocusCanReturnTo`. `HX-Push-Url` is the state's
+  canonical URL, not the form's raw query with its empty fields.
 - **The phone sheet is CSS only**: an unnamed checkbox (`#filter-sheet`, never submitted, never in
   the URL) and one `:has()` rule in `app.css` that turns the rail into a full-screen sheet below
   `lg`. From `lg` up the same pane **collapses to a 34px strip** through another unnamed checkbox
