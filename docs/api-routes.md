@@ -15,11 +15,16 @@
   and the asset route is mounted for every method chi knows (`r.Handle`): `POST`, `PUT`, `DELETE`,
   `PATCH` and `OPTIONS` get the file as `GET` does; live, Cloudflare refuses `TRACE` and `CONNECT`
   before they reach us.
-  ⚠️ **Since AOC-024 the site surface is not.** A rejection on an HTML path (anything outside
-  those three) returns a small **HTML** page, so a person who mistypes a URL or follows a stale
-  link is not handed `{"error":"not found"}` in their browser. The shape follows the **path**,
-  because a path is a fact about which contract was addressed where `Accept` is a negotiation a
-  proxy can get wrong. See `docs/architecture.md` § *Rejections have two shapes*.
+  ⚠️ **Since AOC-024 the site surface is not.** A 404 or 405 on an HTML path (anything outside
+  those three) is a small **HTML** page, so a person who mistypes a URL or follows a stale link is
+  not handed `{"error":"not found"}` in their browser; so is a page's own 400
+  (`/armory?sort=bogus`), which to htmx is an HTML **fragment** for `#results` instead
+  (`armory_invalid`). A page's **500** is not HTML: a failed query gets `text/plain` (`internal
+  server error`, `pages.Handler.fail`), to a browser and to htmx alike, and a panic gets the JSON
+  500 `httpx.Recover` writes (both measured 2026-10-13: a local binary over an empty database, and
+  a panicking test querier; `/armory`, `/armory/{slug}`, `/sitemap.xml`). The shape follows the
+  **path**, because a path is a fact about which contract was addressed where `Accept` is a
+  negotiation a proxy can get wrong. See `docs/architecture.md` § *Rejections have two shapes*.
   **Known exceptions, measured 2026-10-07**, none of them a body a client could take for data:
   - **The Railway host** (`aoc-armory-snapshot-production.up.railway.app`) redirects every path but
     `/health` to the canonical host (`httpx/canonical.go`, AOC-025): a `GET` or `HEAD` gets a `301`
@@ -40,7 +45,8 @@
 - **Every response our router writes carries `Cache-Control`, set by `httpx.Cache` and by nothing
   else** (AOC-026):
   pages `public, max-age=60, s-maxage=3600, stale-while-revalidate=86400`, `/v1/*`
-  `public, max-age=60, s-maxage=600`, assets a year and `immutable`, 404/410 a minute, `/health`,
+  `public, max-age=60, s-maxage=600`, assets a year and `immutable`, a 404 or 410 a minute (but
+  `no-store` under `/assets/`, where a 404 is a stale hash: `httpx.cachePolicy`), `/health`,
   errors, writes and HTMX `no-store`, and anything with a session, a `Set-Cookie` or an
   `Authorization` header `private, no-store`. Full table: `docs/architecture.md` § Caching.
 - **An error body our code writes on `/v1/*`, `/health` and `/assets/*` has one shape**:
@@ -436,7 +442,10 @@ Each term is `{"slug", "name"}` plus, where the row has one (AOC-046, additive):
 
 ### Attribution
 
-Every response on every route carries `"attribution": "AoC Codex — https://aoc-codex.app/info"`.
+Every successful `/v1` response carries `"attribution": "AoC Codex — https://aoc-codex.app/info"`:
+all five routes, measured 2026-10-13 live and on a local binary (`/v1/items`, `/v1/items/{slug}`,
+`/v1/taxonomies`, `/v1/sources/tree`, `/v1/builds/compute`). Error bodies (the shared
+`{"error", "request_id"}`), `/health` and the HTML pages do not carry it.
 It names AoC Codex and the Info page and no other site or person (Pierre, 2026-09-29: the site
 shows no source and no other creator anywhere; origins are explained once, on `/info`). The field
 **stays** — same name, type and meaning as in 0.1.0 — because removing it would be a breaking change
@@ -477,11 +486,14 @@ changed slug on an indexed page throws away its ranking and breaks every link ev
 | POST | `/_smoke/echo` | Fragment when `HX-Request: true`, otherwise the full page. Both send `Vary: HX-Request` |
 | any standard method | `/assets/{name}.{hash}.{ext}` | Embedded CSS, JS, images and fonts (`.css`, `.js`, `.png`, `.svg`, `.woff2`), `Cache-Control: public, max-age=31536000, immutable` for a `GET` (from the policy). Mounted with `r.Handle`, so `POST`, `PUT`, `DELETE`, `PATCH` and `OPTIONS` get the file too (see § Conventions). A wrong hash is 404, `no-store` |
 
-**Every request under a host that is not `PUBLIC_BASE_URL`'s is a 301 to the same path on it**
-(AOC-025, `httpx.WithCanonicalHost`, inside the router): the Railway domain
-`aoc-armory-snapshot-production.up.railway.app` served a full 200 copy of the site. 308 for methods
-other than GET/HEAD; `/health` is exempt (monitors read it on any host); hosts compare lowercased
-without a port. `aoc-codex.app` itself is never redirected — requests reach the origin as
+**A request our router answers under a host that is not `PUBLIC_BASE_URL`'s is redirected to the
+same path on it**: a `301` for `GET` and `HEAD`, a `308` for every other method, and `/health` is
+exempt (monitors read it on any host) (AOC-025, `httpx.WithCanonicalHost`, inside the router; all
+three measured 2026-10-13 on the Railway host live and on a local binary). The Railway domain
+`aoc-armory-snapshot-production.up.railway.app` had served a full 200 copy of the site. `OPTIONS *`
+never reaches the router: `net/http` answers it `200` with an empty body on any host (measured, raw
+socket). Hosts compare lowercased without a port. `aoc-codex.app` itself is never redirected —
+requests reach the origin as
 `Host: aoc-codex.app`. **`PUBLIC_BASE_URL` is required when `ENV=production`**, parsed strictly and must be
 **https** (`httpx.ResolvePublicBase`); malformed, missing or http, the boot fails. The redirect's
 Location takes only the request's path and query, always starting with `/` — a target like
