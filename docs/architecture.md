@@ -621,9 +621,11 @@ is the visual source of truth, distilled from `discovery/design/armory-2026-10-0
   focus back after the swap. So do the links (AOC-071): the pills by position (`pill-<n>`, so
   removing one lands on the pill that took its place), `pills-clear`, the pager (`pager-prev`,
   `pager-next`, `pager-<n>`; a disabled or current one is a span with `tabindex="-1"`) and the sort
-  links (`sort-toggle`, `sort-col-<key>`). The last pill removed has no twin, so it carries
+  links (`sort-toggle`, `sort-col-<key>`). The last pill removed has no twin, so every pill carries
   `data-refocus` (the pill before it, else "clear all"), which a small `htmx:afterSettle` listener in
-  `armory.html` reads only if focus fell to the page. Measured in Chrome with the keyboard; the ids
+  `armory.html` acts on only when the pill held focus as its request left (noted on
+  `htmx:beforeRequest`) and focus has since fallen to the page; a click that never focused the pill
+  (Safari's default, a tap) leaves focus where it was. Measured in Chrome with the keyboard; the ids
   are pinned by `TestTheListsControlsKeepIdsFocusCanReturnTo`. `HX-Push-Url` is the state's
   canonical URL, not the form's raw query with its empty fields.
 - **The phone sheet is CSS only**: an unnamed checkbox (`#filter-sheet`, never submitted, never in
