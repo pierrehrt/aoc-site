@@ -224,6 +224,19 @@ maximum (`ilvl_min=80&ilvl_max=70`, which can match nothing by construction), an
 `facets` that is not a boolean. An *unknown value* is not rejected: whether `legendaryy` is a
 rarity, or `not-a-set` a set, is a database question, and the database answers it with an empty
 page. The same holds for `currency` and `set` (AOC-049).
+Since AOC-069 also: a NUL byte or invalid UTF-8 in any name or value the query string parses into,
+a parameter's value or its name, including a parameter no filter reads and a repeated value no filter reads
+(`q=a%00b`, `place=%FF`, `?a%00b=1`, `?not_a_filter=%FF`, `?q=x&q=%FF`). Before, it depended on where
+the byte was (measured on 0.8.1): in a value a text filter reads (every value of the seven list
+filters `rarity`, `equip_location`, `armour_weight`, `class`, `currency`, `set` and `place`; the first
+of `item_type`, `region`, `tier` and `q`) it reached Postgres, which refuses both as text, so a 500;
+in the value another parameter reads (its first) a 400 by its own parsing; in a name, a parameter
+nothing reads or a repeat nothing reads (`?q=x&q=%FF`, `?limit=5&limit=a%00b`) it was ignored, a 200.
+Every one of these is a 400 now. The check reads every name and value Go's query parser returns,
+which is everything a filter can read, so it covers every filter here, on `/v1/sources/tree` and on
+`/armory`, a filter added later included. A pair the parser drops (one holding `;`, or a malformed
+escape such as `%ZZ`) is read by nothing and never reaches the database: it answers as if absent, as
+on 0.8.1.
 
 **Lists (AOC-064).** `rarity`, `equip_location`, `armour_weight`, `class`, `currency`, `set` and
 `place` each take **several values**, repeated (`?rarity=epic&rarity=rare`), comma-separated
@@ -391,7 +404,8 @@ map, tier, raid and unchained flags), costs, set, classes and equip locations. *
 `unchained` includes its place's** (AOC-039): it is true when the source row is flagged *or* the
 place it sits in is an Unchained dungeon — the one expression the list filter uses, so an item found
 by `unchained=true` never denies it on its own page. An unknown slug is a
-**404 through the central error mapper**, with the standard JSON body — never a bare string.
+**404 through the central error mapper**, with the standard JSON body — never a bare string. A slug
+holding a NUL byte or invalid UTF-8 is that 404 too, without a query (AOC-069; it was a 500).
 
 Each source carries **both a name and a slug** for place, region and map — `"place": "Kyllikki's
 Crypt"` beside `"place_slug": "kyllikki-s-crypt"`. The name is what a person reads; the slug is what

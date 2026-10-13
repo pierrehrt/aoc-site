@@ -589,6 +589,11 @@ func (s *Service) Get(ctx context.Context, slug string) (Detail, error) {
 	if slug == "" {
 		return Detail{}, fmt.Errorf("%w: empty slug", httpx.ErrInvalid)
 	}
+	// No item's address holds a NUL byte or invalid UTF-8, and Postgres refuses both as text: not
+	// found, without asking. It was a 500 on /v1/items/{slug} and /armory/{slug} (AOC-069).
+	if !isText(slug) {
+		return Detail{}, fmt.Errorf("%w: item %q", httpx.ErrNotFound, slug)
+	}
 
 	id, err := s.q.GetItemBySlug(ctx, slug)
 	if err != nil {

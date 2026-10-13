@@ -115,6 +115,23 @@ func ParseFilters(r *http.Request) (Filters, error) { return parseFilters(r) }
 
 func parseFilters(r *http.Request) (Filters, error) {
 	q := r.URL.Query()
+	// A NUL byte or invalid UTF-8 cannot be a text value: Postgres refuses both (SQLSTATE 22021), and
+	// every text filter answered 500 with an ERROR line (AOC-069). Checked on every name and value q
+	// holds, which is everything a filter can read, so a filter added later is covered too. A pair
+	// url.ParseQuery drops (one holding ';', or a malformed escape) is not in q: read by nothing, it
+	// answers as if absent. The pages are served as UTF-8, so their links and form send UTF-8; a name,
+	// an unread parameter or a repeat nothing reads holding either was ignored (200) and is refused
+	// now (DECISIONS.md, 2026-10-13).
+	for k, vs := range q {
+		if !isText(k) {
+			return Filters{}, fmt.Errorf("%w: a parameter name holds a NUL byte or invalid UTF-8", httpx.ErrInvalid)
+		}
+		for _, v := range vs {
+			if !isText(v) {
+				return Filters{}, fmt.Errorf("%w: %s holds a NUL byte or invalid UTF-8", httpx.ErrInvalid, k)
+			}
+		}
+	}
 	f := Filters{
 		// The six facets are lists (AOC-064), read like `place`: repeated, comma-separated, or both.
 		Rarities:       list(q, "rarity"),
