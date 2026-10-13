@@ -132,11 +132,14 @@ func unique(xs []string) []string {
 // headAsGet routes every HEAD as GET, so a handler registered for HEAD itself would never be reached:
 // a GET route with its own HEAD handler would answer with the GET one, and a HEAD-only route would be
 // a 405. The walk above cannot see either (measured at AOC-079 verify round 1: both planted, it
-// passed), so this refuses them by registration: a route may list HEAD only when its HEAD handler is
-// its GET handler (as for the assets, mounted with r.Handle for every method), so what HEAD would
-// have reached is what GET answers. Handlers are compared as chi v5.3.2 compares them (tree.go,
-// equalHandlers): a func by its code pointer, anything else by ==. Its limit: two closures of one
-// function literal count as one handler, so a HEAD handler built from GET's own literal passes.
+// passed), so this refuses them by registration: a route may list HEAD only when the handler chi
+// stores for its HEAD is the one it stores for its GET (as for the assets, mounted with r.Handle for
+// every method), so what HEAD would have reached is what GET answers. The handlers are read from
+// Routes(), as chi stores them, an r.With or r.Group chain included; chi.Walk unwraps such a chain
+// to its endpoint and would hide a HEAD's own middleware (verify round 3). They are compared as chi
+// v5.3.2 compares handlers (tree.go, equalHandlers): a func by its code pointer, anything else (a
+// chain is a pointer) by ==. Its limit: two closures of one function literal, or one method on two
+// receivers, count as one handler, so a HEAD handler built from GET's own literal or method passes.
 func TestNoRouteHasAHeadHandlerOfItsOwn(t *testing.T) {
 	set, err := assets.Load()
 	if err != nil {
@@ -152,13 +155,19 @@ func TestNoRouteHasAHeadHandlerOfItsOwn(t *testing.T) {
 	}
 }
 
-// The check above, against the five ways AOC-079's verify rounds 1 and 2 planted a HEAD handler that
-// nothing reaches (each passed the walk; (c) and (e) also passed round 2's count of methods), one
-// more whose handlers are values rather than funcs (compared by ==), and a route mounted for every
-// method, which it must let through.
+// The check above, against every way AOC-079's verify rounds planted a HEAD handler that nothing
+// reaches: (a)–(e) passed the walk, (c) and (e) round 2's count of methods, (g)–(g3) round 3's
+// chi.Walk endpoints; (f) has handlers that are values rather than funcs (compared by ==). And
+// against routes mounted for every method, with and without middleware, which it must let through.
 func TestTheHeadCheckRefusesEveryPlant(t *testing.T) {
 	ok := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	teapot := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusTeapot) })
+	mw := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-Mw", "1")
+			next.ServeHTTP(w, r)
+		})
+	}
 	var others []string // every method chi knows but HEAD, read from a probe route
 	probe := chi.NewRouter()
 	probe.Handle("/", ok)
@@ -194,6 +203,18 @@ func TestTheHeadCheckRefusesEveryPlant(t *testing.T) {
 			r.Handle("/zz", http.RedirectHandler("/a", http.StatusFound))
 			r.Method(http.MethodHead, "/zz", http.RedirectHandler("/b", http.StatusFound))
 		},
+		"(g) GET, and HEAD with its own middleware": func(r chi.Router) {
+			r.Get("/zz", ok)
+			r.With(mw).Head("/zz", ok)
+		},
+		"(g2) GET, and HEAD in a group with its own middleware": func(r chi.Router) {
+			r.Get("/zz", ok)
+			r.Group(func(g chi.Router) { g.Use(mw); g.Head("/zz", ok) })
+		},
+		"(g3) GET with its own middleware, and HEAD": func(r chi.Router) {
+			r.With(mw).Get("/zz", ok)
+			r.Head("/zz", ok)
+		},
 	}
 	for name, plant := range plants {
 		r := chi.NewRouter()
@@ -202,33 +223,39 @@ func TestTheHeadCheckRefusesEveryPlant(t *testing.T) {
 			t.Errorf("%s: not refused", name)
 		}
 	}
-	ctl := chi.NewRouter()
-	ctl.Handle("/zz", ok)
-	if bad := headHandlersOfTheirOwn(t, ctl); len(bad) > 0 {
-		t.Errorf("a route mounted for every method was refused: %v", bad)
+	controls := map[string]func(r chi.Router){
+		"Handle":                 func(r chi.Router) { r.Handle("/zz", ok) },
+		"With(mw).Handle":        func(r chi.Router) { r.With(mw).Handle("/zz", ok) },
+		"Use(mw), then Handle":   func(r chi.Router) { r.Use(mw); r.Handle("/zz", ok) },
+		"Group(Use(mw); Handle)": func(r chi.Router) { r.Group(func(g chi.Router) { g.Use(mw); g.Handle("/zz", ok) }) },
+	}
+	for name, control := range controls {
+		r := chi.NewRouter()
+		control(r)
+		if bad := headHandlersOfTheirOwn(t, r); len(bad) > 0 {
+			t.Errorf("%s, a route mounted for every method, was refused: %v", name, bad)
+		}
 	}
 }
 
-// headHandlersOfTheirOwn lists every route of r, as chi.Walk lists them, whose HEAD handler is not
-// its GET handler.
+// headHandlersOfTheirOwn lists every route of r, sub-routers included, where the handler chi stores
+// for HEAD is not the one it stores for GET. Read from Routes(), not chi.Walk: see above.
 func headHandlersOfTheirOwn(t *testing.T, r chi.Routes) []string {
 	t.Helper()
-	handlers := map[string]map[string]http.Handler{}
-	if err := chi.Walk(r, func(method, route string, h http.Handler, _ ...func(http.Handler) http.Handler) error {
-		if handlers[route] == nil {
-			handlers[route] = map[string]http.Handler{}
-		}
-		handlers[route][method] = h
-		return nil
-	}); err != nil {
-		t.Fatalf("chi.Walk: %v", err)
-	}
 	var bad []string
-	for route, hs := range handlers {
-		if head, ok := hs[http.MethodHead]; ok && !sameHandler(head, hs[http.MethodGet]) {
-			bad = append(bad, fmt.Sprintf("%s has a HEAD handler that is not its GET handler: headAsGet routes HEAD as GET, so it is never reached", route))
+	var visit func(prefix string, r chi.Routes)
+	visit = func(prefix string, r chi.Routes) {
+		for _, route := range r.Routes() {
+			if route.SubRoutes != nil {
+				visit(prefix+strings.TrimSuffix(route.Pattern, "/*"), route.SubRoutes)
+				continue
+			}
+			if head, ok := route.Handlers[http.MethodHead]; ok && !sameHandler(head, route.Handlers[http.MethodGet]) {
+				bad = append(bad, fmt.Sprintf("%s%s has a HEAD handler that is not its GET handler: headAsGet routes HEAD as GET, so it is never reached", prefix, route.Pattern))
+			}
 		}
 	}
+	visit("", r)
 	return bad
 }
 
