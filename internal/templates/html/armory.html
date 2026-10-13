@@ -162,10 +162,11 @@ document.addEventListener("htmx:oobAfterSwap", function () { aocEnable(document)
 // data-refocus where focus goes when the swap leaves it no twin (only the last one removed has none):
 // the first selector that matches, its last match. Read after htmx's own restore, and acted on only
 // when the pill held focus as its request left and focus has since fallen to the page: after the
-// keyboard, and also after a mouse click or a tap in Chrome, which focuses a link on press (no ring
-// is drawn). A click or tap that does not focus the link (Safari's default; not measured here)
-// leaves focus where it was, as before this ticket. Noted per element, so another request in flight
-// cannot clear it.
+// keyboard, and also after a mouse click or a tap in Chrome, which focuses a link on press (Chrome
+// then shows no focus indicator). A click or tap that does not focus the link (Safari's default; not
+// measured here) leaves focus where it was, as before this ticket. Noted per element, so another
+// request in flight cannot clear it. (Tailwind reads this comment too: a word here that is the name
+// of one of its classes adds that class to app.css, and the gate's asset check fails.)
 var aocHadFocus = new WeakSet();
 document.addEventListener("htmx:beforeRequest", function (e) {
   if (document.activeElement === e.detail.elt) aocHadFocus.add(e.detail.elt);
