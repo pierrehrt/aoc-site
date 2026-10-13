@@ -141,12 +141,13 @@ func NotFound(w http.ResponseWriter, r *http.Request) { Fail(w, r, ErrNotFound) 
 // (verified, AOC-024 verify round 2). It was the claim that went stale, not the behaviour.
 func MethodNotAllowed(w http.ResponseWriter, r *http.Request) { Fail(w, r, ErrMethodNotAllowed) }
 
-// headAsGet routes every HEAD request as the GET of the same path. No route here registers HEAD
-// itself, so this is chi's middleware.GetHead without its lookup, and the lookup was the bug: it
-// asks whether a HEAD route exists, and on a mount's bare path (/v1/items, /v1/taxonomies) it finds
-// the stub chi.Mount registers for every method, so the HEAD reached a sub-router with no HEAD
-// route and answered 405 (AOC-079, measured on chi v5.3.2). A route that ever registers HEAD would
-// be routed as GET too: cmd/api's walk test (every GET route, HEAD against GET) is what notices.
+// headAsGet routes every HEAD request as the GET of the same path. No route here has a HEAD handler
+// of its own (only the assets are mounted for every method, and their handler serves HEAD as it
+// serves GET), so this is chi's middleware.GetHead without its lookup, and the lookup was the bug:
+// it asks whether a HEAD route exists, and on a mount's bare path (/v1/items, /v1/taxonomies) it
+// finds the stub chi.Mount registers for every method, so the HEAD reached a sub-router with no
+// HEAD route and answered 405 (AOC-079, measured on chi v5.3.2). A HEAD handler added later would
+// never be reached; cmd/api's TestNoRouteHasAHeadHandlerOfItsOwn refuses one.
 func headAsGet(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodHead {

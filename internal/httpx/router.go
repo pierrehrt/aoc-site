@@ -124,7 +124,7 @@ func newRouter(b Build, site SiteRoutes, assets http.Handler, mountV1 V1Routes, 
 	// ⭐ HEAD. chi's r.Get registers GET only, so every public page answered HEAD with 405
 	// — on a site whose entire purpose is being crawled and linked, where uptime monitors,
 	// link checkers and `curl -I` all default to HEAD (AOC-024 verify round 2, measured
-	// live). headAsGet routes every HEAD to the GET handler; net/http sends no body for a HEAD,
+	// live). headAsGet routes every HEAD as GET; net/http sends no body for a HEAD,
 	// so Content-Length stays honest rather than faked per route. chi's middleware.GetHead did
 	// this only where it found no HEAD route, and on a mount's bare path (/v1/items) it found
 	// the mount's all-method stub: HEAD /v1/items and /v1/taxonomies were 405 (AOC-079).

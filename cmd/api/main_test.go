@@ -25,8 +25,9 @@ var routeParam = regexp.MustCompile(`\{[^}]+\}`)
 
 // AOC-079. docs/api-routes.md says HEAD is answered on every route, and HEAD /v1/items and HEAD
 // /v1/taxonomies were 405 (measured): chi's GetHead found the bare mount path's stub and did not
-// re-route them as GET. This walks every GET route of the application as run() composes it, plus each
-// mount's bare path, and asks the same thing of each: HEAD answers GET's status and Content-Type, with
+// re-route them as GET. This walks every GET route of the application as run() composes it, and every
+// path prefix of one, with and without its trailing slash (so each mount's bare path: /v1, /v1/items,
+// /v1/sources, …), and asks the same thing of each: HEAD answers GET's status and Content-Type, with
 // no body. A route added to newHandler is covered without a line here.
 //
 // Through a real server, not a recorder: net/http is what drops a HEAD body, and a recorder keeps it.
@@ -54,16 +55,21 @@ func TestHeadAnswersWhatGetAnswersOnEveryRoute(t *testing.T) {
 		}
 		p := strings.ReplaceAll(routeParam.ReplaceAllString(route, "x"), "*", "x")
 		paths = append(paths, p)
-		if len(p) > 1 && strings.HasSuffix(p, "/") {
-			paths = append(paths, strings.TrimSuffix(p, "/")) // a mount's bare path: the one that broke
+		// Every prefix, with and without its slash: a mount's bare path is where GetHead broke.
+		for i := 1; i < len(p); i++ {
+			if p[i] == '/' {
+				paths = append(paths, p[:i], p[:i+1])
+			}
 		}
 		return nil
 	})
 	if err != nil {
 		t.Fatalf("chi.Walk: %v", err)
 	}
+	paths = unique(paths)
 	// The walk must have seen the routes this ticket is about, or it proved nothing.
-	for _, must := range []string{"/v1/items", "/v1/taxonomies", "/v1/items/x", "/health", "/armory"} {
+	for _, must := range []string{"/v1/items", "/v1/taxonomies", "/v1/items/x", "/health", "/armory",
+		"/v1", "/v1/", "/v1/sources", "/v1/builds", "/v1/sources/", "/v1/builds/"} {
 		found := false
 		for _, p := range paths {
 			found = found || p == must
@@ -107,4 +113,62 @@ func fetch(t *testing.T, url, method string) answer {
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
 	return answer{resp.StatusCode, resp.Header.Get("Content-Type"), len(b)}
+}
+
+func unique(xs []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, x := range xs {
+		if !seen[x] {
+			seen[x] = true
+			out = append(out, x)
+		}
+	}
+	return out
+}
+
+// headAsGet routes every HEAD as GET, so a handler registered for HEAD itself would never be reached:
+// a GET route with its own HEAD handler would answer with the GET one, and a HEAD-only route would be
+// a 405. The walk above cannot see either (measured at AOC-079 verify round 1: both planted, it
+// passed), so this refuses them by registration. A route may list HEAD only when it is mounted for
+// every method chi knows (r.Handle, as the assets are), whose handler serves HEAD as it serves GET.
+// "Every method" is chi's own list, read from a probe route, not one written here.
+func TestNoRouteHasAHeadHandlerOfItsOwn(t *testing.T) {
+	set, err := assets.Load()
+	if err != nil {
+		t.Fatalf("assets.Load: %v", err)
+	}
+	tpl, err := templates.New(set)
+	if err != nil {
+		t.Fatalf("templates.New: %v", err)
+	}
+	h := newHandler(httpx.Build{Version: "test", Commit: "test", Env: "test"}, failingQ{}, tpl, set, "https://example.test")
+
+	methodsOf := func(r chi.Routes) map[string]map[string]bool {
+		m := map[string]map[string]bool{}
+		if err := chi.Walk(r, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
+			if m[route] == nil {
+				m[route] = map[string]bool{}
+			}
+			m[route][method] = true
+			return nil
+		}); err != nil {
+			t.Fatalf("chi.Walk: %v", err)
+		}
+		return m
+	}
+	probe := chi.NewRouter()
+	probe.Handle("/", http.NotFoundHandler())
+	every := methodsOf(probe)["/"]
+	if !every[http.MethodHead] || !every[http.MethodPost] {
+		t.Fatalf("chi's every-method set has no HEAD or POST: %v", every)
+	}
+	for route, ms := range methodsOf(h) {
+		if !ms[http.MethodHead] {
+			continue
+		}
+		if len(ms) != len(every) {
+			t.Errorf("%s registers HEAD itself (methods %v): headAsGet routes HEAD as GET, so that handler is never reached", route, ms)
+		}
+	}
 }
