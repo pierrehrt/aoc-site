@@ -7,20 +7,56 @@
 
 - **Everything product-facing lives under `/v1/`.** A breaking change ships as `/v2/` beside it and
   the old version is marked deprecated here, never changed in place (CLAUDE.md rule 5c).
-- **Every `/v1/*`, `/health` and `/assets/*` response is JSON**, success or failure, including
-  404, 405 and 500 — those are contracts a machine parses.
-  ⚠️ **Since AOC-024 the site surface is not.** A rejection on an HTML path (anything outside
-  those three) returns a small **HTML** page, so a person who mistypes a URL or follows a stale
-  link is not handed `{"error":"not found"}` in their browser. The shape follows the **path**,
-  because a path is a fact about which contract was addressed where `Accept` is a negotiation a
-  proxy can get wrong. See `docs/architecture.md` § *Rejections have two shapes*.
-- **Every response carries `X-Request-Id`**, echoed from the request if supplied and ≤ 64 chars.
-- **Every response carries `Cache-Control`, set by `httpx.Cache` and by nothing else** (AOC-026):
+- **`/v1/*` and `/health` answer in JSON on the canonical host**, success and rejection alike
+  (200, 400, 404, 405, 500): those are contracts a machine parses. **`/assets/*` is JSON only when
+  it rejects**: an unknown or stale hash is a JSON 404, and so is a method chi does not know
+  (`BREW` → 405). A served asset carries its own type (`text/css`, `text/javascript`, `image/png`,
+  `image/svg+xml`, `font/woff2`; every arm pinned by `TestEveryAssetKindIsServedWithItsOwnType`),
+  and the asset route is mounted for every method chi knows (`r.Handle`): `POST`, `PUT`, `DELETE`,
+  `PATCH` and `OPTIONS` get the file as `GET` does; live, Cloudflare refuses `TRACE` and `CONNECT`
+  before they reach us.
+  ⚠️ **Since AOC-024 the site surface is not.** A 404 or 405 on an HTML path (anything outside
+  those three) is a small **HTML** page, so a person who mistypes a URL or follows a stale link is
+  not handed `{"error":"not found"}` in their browser; so is a page's own 400. To htmx, a refused
+  search or build (`/armory?sort=bogus`, `ilvl_min` above `ilvl_max`, a malformed `gear`) is an HTML
+  **fragment** for `#results` instead (`armory_invalid`, `invalidSearch`), while a bad page number
+  (`/armory?p=0`, `p=abc`) is the small 400 page to htmx too (`httpx.RejectHTML`; both measured
+  2026-10-13, local and live). A page's **500** is not HTML: a failed query gets `text/plain` (`internal
+  server error`, `pages.Handler.fail`), to a browser and to htmx alike, and a panic gets the JSON
+  500 `httpx.Recover` writes (both measured 2026-10-13: a local binary over an empty database, and
+  a panicking test querier; `/armory`, `/armory/{slug}`, `/sitemap.xml`). The shape follows the
+  **path**, because a path is a fact about which contract was addressed where `Accept` is a
+  negotiation a proxy can get wrong. See `docs/architecture.md` § *Rejections have two shapes*.
+  **Known exceptions, measured 2026-10-07**, none of them a body a client could take for data:
+  - **The Railway host** (`aoc-armory-snapshot-production.up.railway.app`) redirects every path but
+    `/health` to the canonical host (`httpx/canonical.go`, AOC-025): a `GET` or `HEAD` gets a `301`
+    as `text/html`, any other method a `308` with no `Content-Type` and an empty body. `/health`
+    answers there as JSON.
+  - **A reader that has already gone** gets a bare `499` from `httpx.Fail`: no `Content-Type` and
+    no body, since nobody is left to read it.
+  - **Replies Go's `net/http` writes itself, before our router runs.** They are a class, not a
+    list: none carries `X-Request-Id`, `Cache-Control` or a JSON body, and none reaches the access
+    log. Measured examples (raw socket, local binary): `400` for a malformed request line, an
+    illegal byte in a header, a repeated `Host`, or a missing `Host` on HTTP/1.1 (on HTTP/1.0 our
+    code answers); `417` for an unknown `Expect`; `431` for headers over the limit; `501` for an
+    unknown `Transfer-Encoding`; `505` for an unsupported HTTP version; and `OPTIONS *`, answered
+    `200` with an empty body (through the apex, Cloudflare answers `OPTIONS *` itself, with a `400`:
+    measured 2026-10-13). The three bullets below describe what our router writes, so they do
+    not cover these.
+- **Every response our router writes carries `X-Request-Id`**, echoed from the request if supplied
+  and ≤ 64 chars.
+- **Every response our router writes carries `Cache-Control`, set by `httpx.Cache` and by nothing
+  else** (AOC-026):
   pages `public, max-age=60, s-maxage=3600, stale-while-revalidate=86400`, `/v1/*`
-  `public, max-age=60, s-maxage=600`, assets a year and `immutable`, 404/410 a minute, `/health`,
-  errors, writes and HTMX `no-store`, and anything with a session, a `Set-Cookie` or an
+  `public, max-age=60, s-maxage=600`, assets a year and `immutable`, a 404 or 410 a minute (but
+  `no-store` under `/assets/`, where a 404 is a stale hash: `httpx.cachePolicy`), `/health`,
+  errors, writes and HTMX `no-store` (a write or an HTMX request is `no-store` whatever its status,
+  a 404 included: `cachePolicy` decides those before the status), and anything with a session, a `Set-Cookie` or an
   `Authorization` header `private, no-store`. Full table: `docs/architecture.md` § Caching.
-- **Errors share one body shape**: `{"error": "...", "request_id": "..."}`.
+- **An error body our code writes on `/v1/*`, `/health` and `/assets/*` has one shape**:
+  `{"error": "...", "request_id": "..."}`, except the fallback `Respond` writes when encoding its
+  own response fails (`{"error":"internal error"}`, no `request_id`; pinned by
+  `TestRespondFallbackIsTheDocumentedShape`). The bare `499` above has no body.
 - Every list endpoint is paginated (`GET /v1/items`: `limit`/`offset`, below).
 
 ## Operational
@@ -188,6 +224,19 @@ maximum (`ilvl_min=80&ilvl_max=70`, which can match nothing by construction), an
 `facets` that is not a boolean. An *unknown value* is not rejected: whether `legendaryy` is a
 rarity, or `not-a-set` a set, is a database question, and the database answers it with an empty
 page. The same holds for `currency` and `set` (AOC-049).
+Since AOC-069 also: a NUL byte or invalid UTF-8 in any name or value the query string parses into,
+a parameter's value or its name, including a parameter no filter reads and a repeated value no filter reads
+(`q=a%00b`, `place=%FF`, `?a%00b=1`, `?not_a_filter=%FF`, `?q=x&q=%FF`). Before, it depended on where
+the byte was (measured on 0.8.1): in a value a text filter reads (every value of the seven list
+filters `rarity`, `equip_location`, `armour_weight`, `class`, `currency`, `set` and `place`; the first
+of `item_type`, `region`, `tier` and `q`) it reached Postgres, which refuses both as text, so a 500;
+in the value another parameter reads (its first) a 400 by its own parsing; in a name, a parameter
+nothing reads or a repeat nothing reads (`?q=x&q=%FF`, `?limit=5&limit=a%00b`) it was ignored, a 200.
+Every one of these is a 400 now. The check reads every name and value Go's query parser returns,
+which is everything a filter can read, so it covers every filter here, on `/v1/sources/tree` and on
+`/armory`, a filter added later included. A pair the parser drops (one holding `;`, or a malformed
+escape such as `%ZZ`) is read by nothing and never reaches the database: it answers as if absent, as
+on 0.8.1.
 
 **Lists (AOC-064).** `rarity`, `equip_location`, `armour_weight`, `class`, `currency`, `set` and
 `place` each take **several values**, repeated (`?rarity=epic&rarity=rare`), comma-separated
@@ -355,7 +404,8 @@ map, tier, raid and unchained flags), costs, set, classes and equip locations. *
 `unchained` includes its place's** (AOC-039): it is true when the source row is flagged *or* the
 place it sits in is an Unchained dungeon — the one expression the list filter uses, so an item found
 by `unchained=true` never denies it on its own page. An unknown slug is a
-**404 through the central error mapper**, with the standard JSON body — never a bare string.
+**404 through the central error mapper**, with the standard JSON body — never a bare string. A slug
+holding a NUL byte or invalid UTF-8 is that 404 too, without a query (AOC-069; it was a 500).
 
 Each source carries **both a name and a slug** for place, region and map — `"place": "Kyllikki's
 Crypt"` beside `"place_slug": "kyllikki-s-crypt"`. The name is what a person reads; the slug is what
@@ -410,7 +460,10 @@ Each term is `{"slug", "name"}` plus, where the row has one (AOC-046, additive):
 
 ### Attribution
 
-Every response on every route carries `"attribution": "AoC Codex — https://aoc-codex.app/info"`.
+Every successful `/v1` response carries `"attribution": "AoC Codex — https://aoc-codex.app/info"`:
+all five routes, measured 2026-10-13 live and on a local binary (`/v1/items`, `/v1/items/{slug}`,
+`/v1/taxonomies`, `/v1/sources/tree`, `/v1/builds/compute`). Error bodies (the shared
+`{"error", "request_id"}`), `/health` and the HTML pages do not carry it.
 It names AoC Codex and the Info page and no other site or person (Pierre, 2026-09-29: the site
 shows no source and no other creator anywhere; origins are explained once, on `/info`). The field
 **stays** — same name, type and meaning as in 0.1.0 — because removing it would be a breaking change
@@ -449,13 +502,16 @@ changed slug on an indexed page throws away its ranking and breaks every link ev
 | GET | `/sitemaps/{n}.xml` | **AOC-025.** Chunk `n` (1-based) of one sequence: `/`, every **built** section in the nav (a Coming Soon tab is left out), then every `/armory/{slug}` in item-id order — at most **50,000** URLs a file, built from the database on each request (edge-cached for an hour). **No `<lastmod>`**: no row has a real modification time. `n` out of range is a 404 |
 | GET | `/_smoke` | Rendering proof page, HTML, **noindex**. Deleted by a later ticket |
 | POST | `/_smoke/echo` | Fragment when `HX-Request: true`, otherwise the full page. Both send `Vary: HX-Request` |
-| GET | `/assets/{name}.{hash}.{ext}` | Embedded CSS, JS and images (`.css`, `.js`, `.png`, `.svg`), `Cache-Control: public, max-age=31536000, immutable` (from the policy). A wrong hash is 404, `no-store` |
+| any standard method | `/assets/{name}.{hash}.{ext}` | Embedded CSS, JS, images and fonts (`.css`, `.js`, `.png`, `.svg`, `.woff2`), `Cache-Control: public, max-age=31536000, immutable` for a `GET` (from the policy). Mounted with `r.Handle`, so `POST`, `PUT`, `DELETE`, `PATCH` and `OPTIONS` get the file too (see § Conventions). A wrong hash is 404, `no-store` |
 
-**Every request under a host that is not `PUBLIC_BASE_URL`'s is a 301 to the same path on it**
-(AOC-025, `httpx.WithCanonicalHost`, inside the router): the Railway domain
-`aoc-armory-snapshot-production.up.railway.app` served a full 200 copy of the site. 308 for methods
-other than GET/HEAD; `/health` is exempt (monitors read it on any host); hosts compare lowercased
-without a port. `aoc-codex.app` itself is never redirected — requests reach the origin as
+**A request our router answers under a host that is not `PUBLIC_BASE_URL`'s is redirected to the
+same path on it**: a `301` for `GET` and `HEAD`, a `308` for every other method, and `/health` is
+exempt (monitors read it on any host) (AOC-025, `httpx.WithCanonicalHost`, inside the router; all
+three measured 2026-10-13 on the Railway host live and on a local binary). The Railway domain
+`aoc-armory-snapshot-production.up.railway.app` had served a full 200 copy of the site. `OPTIONS *`
+never reaches the router: `net/http` answers it `200` with an empty body on any host (measured, raw
+socket). Hosts compare lowercased without a port. `aoc-codex.app` itself is never redirected —
+requests reach the origin as
 `Host: aoc-codex.app`. **`PUBLIC_BASE_URL` is required when `ENV=production`**, parsed strictly and must be
 **https** (`httpx.ResolvePublicBase`); malformed, missing or http, the boot fails. The redirect's
 Location takes only the request's path and query, always starting with `/` — a target like
@@ -465,9 +521,21 @@ Location takes only the request's path and query, always starting with `/` — a
 `/assets/*` are JSON; everything else is a small HTML page. `/health` is included because it is
 read by Railway and by uptime monitors — never by a person in a browser.
 
-**`HEAD` is answered on every route** (`chi/middleware.GetHead`): it routes an unmatched HEAD to
-the GET handler and drops the body. Without it chi replied **405**, which is what monitors, link
-checkers and `curl -I` would have seen on a site built to be crawled.
+**`HEAD` answers what `GET` answers, on every path our router serves** (`httpx.headAsGet`): every
+HEAD is routed as the GET of its path, and net/http sends no body (so a POST-only route answers HEAD
+with GET's 405). Without it chi replied **405**, which is what monitors, link checkers and `curl -I`
+would have seen on a site built to be crawled. Until AOC-079 this was chi's `middleware.GetHead`,
+which re-routes only where it finds no HEAD route, and on a mount's bare path it found one: `HEAD
+/v1/items` and `/v1/taxonomies` (with or without the trailing slash) were 405.
+`TestHeadAnswersWhatGetAnswersOnEveryRoute` (`cmd/api`) walks every GET route the application
+registers and every path prefix of one, with and without its trailing slash (so each mount's bare
+path), and holds HEAD to GET's status and Content-Type, with no body. A HEAD handler of a route's
+own would never be reached, so `TestNoRouteHasAHeadHandlerOfItsOwn` refuses any route chi's
+`Routes()` lists, at every level and a mount's own `/*` included, whose listed HEAD handler, an
+`r.With` or `r.Group` chain included, is not its listed GET handler, compared as chi compares
+handlers (a func by its code pointer, so two closures of one function literal, or one method on two
+receivers, count as one handler); `chi.Walk` lists HEAD only for the assets, mounted for every
+method with one handler.
 
 ⚠️ **405 responses carry no `Allow` header.** RFC 9110 §15.5.6 requires one; chi does not hand the
 handler the matched route's method set, and synthesising one risks a header that lies. Accepted

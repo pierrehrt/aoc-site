@@ -15,7 +15,8 @@ newer), chi, pgx, sqlc, goose, Postgres, deployed on Railway.
 ## Package layout
 
 ```
-cmd/api/main.go        wiring ONLY — config, router, serve, shut down
+cmd/api/main.go        wiring ONLY — config, serve, shut down
+cmd/api/routes.go      newHandler: the pages, assets and /v1 routers over one querier (AOC-079)
 cmd/import-armory/     the armory importer, run as the `import` service (AOC-011, AOC-040)
 internal/httpx/        the HTTP edge: middleware, error mapping, the cache policy, /health
 internal/version/      build identity: the VERSION file, the commit (AOC-015)
@@ -164,7 +165,7 @@ stale, not the behaviour.
 ## Middleware, in order
 
 `RequestID` → `Log` → `Cache` → (`canonicalHost`, with `WithCanonicalHost`) → `Recover` → `deadline`
-→ `GetHead`.
+→ `headAsGet`.
 
 `deadline` (AOC-065, § 3) gives every request's context `RequestDeadline`. It is mounted with
 `r.Use` ahead of every route, so everything a handler starts is bounded.
@@ -203,7 +204,10 @@ writer must not quietly remove capabilities from everything downstream.
 ## Caching (AOC-026)
 
 Cloudflare's free plan sits in front of the site. The origin decides what it may keep, through one
-header on every response, set in **one place**: `internal/httpx/cache.go`.
+header on every response our router writes, set in **one place**: `internal/httpx/cache.go`.
+Replies Go's `net/http` writes before the router runs carry none (measured 2026-10-13 over a raw
+socket on a local binary: a malformed request line, a missing `Host`, `OPTIONS *`); the class is in
+`api-routes.md` § Conventions, and the edge's rule 1 below never caches a response without one.
 
 **Why it matters more than speed:** Railway bills usage. An uncached origin turns a viral Reddit
 link into an invoice; a cached page costs the same whether ten people read it or ten thousand.
@@ -283,7 +287,8 @@ this order:
 1. **Every request to the apex** —
    - **eligible for cache** — Cloudflare does not cache HTML otherwise;
    - **edge TTL: use `Cache-Control` if present, bypass if not** — so a response without the header
-     is never cached. The origin always sends one; this is the fail-closed backstop;
+     is never cached. Our router sends one on every response it writes; this is the fail-closed
+     backstop for any reply that has none (`net/http`'s own, above);
    - **browser TTL: respect origin** — ⚠️ the zone's `browser_cache_ttl` is **14400** (read
      2026-09-28), which would otherwise stretch pages' `max-age=60` for browsers.
 2. **A request carrying `HX-Request: true` or any `Authorization`** → **not eligible** (bypass).
@@ -409,8 +414,9 @@ The path decides, not `Accept`: a path is a fact about which contract was addres
 the thing that broke.
 
 ⚠️ 405 was JSON everywhere until AOC-024 verify round 2, so a browser GET on a fragment
-route handed a person raw JSON. ⚠️ `HEAD` is answered on every route via
-`chi/middleware.GetHead`; without it chi replied 405 to monitors and link checkers.
+route handed a person raw JSON. ⚠️ `HEAD` is answered on every route via `headAsGet`
+(AOC-079; chi's `middleware.GetHead` missed a mount's bare path); without it chi replied 405 to
+monitors and link checkers.
 
 ### Assets
 
@@ -618,8 +624,18 @@ is the visual source of truth, distilled from `discovery/design/armory-2026-10-0
   (`hx-swap-oob="innerHTML:#…"`), so once an answer has landed (and no press on a slider holds
   its pane back; see below) the counts describe the rows beside them, and the hidden inputs and the
   sort match its state. Inputs keep stable ids, so HTMX hands
-  focus back after the swap. `HX-Push-Url` is the state's canonical URL, not the form's raw query with its empty
-  fields.
+  focus back after the swap. So do the links (AOC-071): the pills by position (`pill-<n>`, so
+  removing one lands on the pill that took its place), `pills-clear`, the pager (`pager-prev`,
+  `pager-next`, `pager-<n>`; a disabled or current one is a span with `tabindex="-1"`) and the sort
+  links (`sort-toggle`, `sort-col-<key>`). The last pill removed has no twin, so every pill carries
+  `data-refocus` (the pill before it, else "clear all"), which a small `htmx:afterSettle` listener in
+  `armory.html` acts on only when the pill held focus as its request left (noted on
+  `htmx:beforeRequest`) and focus has since fallen to the page: after the keyboard, and also after a
+  mouse click or a tap in Chrome, which focuses a link on press (Chrome then shows no focus
+  indicator). A click or tap
+  that does not focus the link (Safari's default; not measured here) leaves focus where it was. Measured in Chrome with the keyboard; the ids
+  are pinned by `TestTheListsControlsKeepIdsFocusCanReturnTo`. `HX-Push-Url` is the state's
+  canonical URL, not the form's raw query with its empty fields.
 - **The phone sheet is CSS only**: an unnamed checkbox (`#filter-sheet`, never submitted, never in
   the URL) and one `:has()` rule in `app.css` that turns the rail into a full-screen sheet below
   `lg`. From `lg` up the same pane **collapses to a 34px strip** through another unnamed checkbox
@@ -1067,6 +1083,15 @@ only structured copy of the armory data.
    the diff, and the gate fails when it is stale. Same rule as the built assets.
 5. ⚠️ **`make schema-dump` strips pg_dump's `\restrict` lines**, which carry a random token and
    would otherwise make the file differ on every run.
+6. ⚠️ **A failed `make schema-dump` leaves `database-schema.sql` as it was** (AOC-029). The dump
+   goes to a temporary file, which replaces the document only when the whole run succeeded. A
+   redirect straight into the document truncated it before `pg_dump` ran, so a laptop with no
+   container runtime turned it into a 13-line header that read like a real file. There is no
+   `pg_dump | grep` either: that pipe's status was grep's. An empty dump is refused by name, and
+   an interrupted run (Ctrl-C) removes its temporary files. `internal/db/schema_dump_test.go`
+   runs the real target against a fake `COMPOSE`. The other generated files were measured and
+   do not share the flaw: `sqlc generate` and the Tailwind build leave their output untouched
+   when they fail.
 
 ### The content model, and why its seeds are generated
 
