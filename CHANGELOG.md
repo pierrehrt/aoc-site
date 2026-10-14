@@ -32,8 +32,8 @@ answers like `GET` everywhere, and the keyboard keeps its place on the Armory. N
   parameter's name, in a parameter nothing reads or in a repeat nothing reads, ignored before, is a
   400 too (AOC-069)
 - `HEAD` answers what `GET` answers on every path: at the origin, `HEAD /v1/items` and
-  `HEAD /v1/taxonomies`, with or without the trailing slash, answered 405 (through Cloudflare they
-  already answered 200) (AOC-079)
+  `HEAD /v1/taxonomies`, with or without the trailing slash, answered 405; through Cloudflare, the
+  two without it already answered 200 (AOC-079)
 - On the Armory, removing a filter pill, "clear all", the pager and the sort links, followed with the
   keyboard, keep focus on that control or the one that took its place (after the last pill, the
   pill before it; after the only pill, "clear all") instead of dropping it to the page. After a
