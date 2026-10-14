@@ -521,9 +521,21 @@ Location takes only the request's path and query, always starting with `/` — a
 `/assets/*` are JSON; everything else is a small HTML page. `/health` is included because it is
 read by Railway and by uptime monitors — never by a person in a browser.
 
-**`HEAD` is answered on every route** (`chi/middleware.GetHead`): it routes an unmatched HEAD to
-the GET handler and drops the body. Without it chi replied **405**, which is what monitors, link
-checkers and `curl -I` would have seen on a site built to be crawled.
+**`HEAD` answers what `GET` answers, on every path our router serves** (`httpx.headAsGet`): every
+HEAD is routed as the GET of its path, and net/http sends no body (so a POST-only route answers HEAD
+with GET's 405). Without it chi replied **405**, which is what monitors, link checkers and `curl -I`
+would have seen on a site built to be crawled. Until AOC-079 this was chi's `middleware.GetHead`,
+which re-routes only where it finds no HEAD route, and on a mount's bare path it found one: `HEAD
+/v1/items` and `/v1/taxonomies` (with or without the trailing slash) were 405.
+`TestHeadAnswersWhatGetAnswersOnEveryRoute` (`cmd/api`) walks every GET route the application
+registers and every path prefix of one, with and without its trailing slash (so each mount's bare
+path), and holds HEAD to GET's status and Content-Type, with no body. A HEAD handler of a route's
+own would never be reached, so `TestNoRouteHasAHeadHandlerOfItsOwn` refuses any route chi's
+`Routes()` lists, at every level and a mount's own `/*` included, whose listed HEAD handler, an
+`r.With` or `r.Group` chain included, is not its listed GET handler, compared as chi compares
+handlers (a func by its code pointer, so two closures of one function literal, or one method on two
+receivers, count as one handler); `chi.Walk` lists HEAD only for the assets, mounted for every
+method with one handler.
 
 ⚠️ **405 responses carry no `Allow` header.** RFC 9110 §15.5.6 requires one; chi does not hand the
 handler the matched route's method set, and synthesising one risks a header that lies. Accepted

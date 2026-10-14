@@ -15,7 +15,8 @@ newer), chi, pgx, sqlc, goose, Postgres, deployed on Railway.
 ## Package layout
 
 ```
-cmd/api/main.go        wiring ONLY — config, router, serve, shut down
+cmd/api/main.go        wiring ONLY — config, serve, shut down
+cmd/api/routes.go      newHandler: the pages, assets and /v1 routers over one querier (AOC-079)
 cmd/import-armory/     the armory importer, run as the `import` service (AOC-011, AOC-040)
 internal/httpx/        the HTTP edge: middleware, error mapping, the cache policy, /health
 internal/version/      build identity: the VERSION file, the commit (AOC-015)
@@ -164,7 +165,7 @@ stale, not the behaviour.
 ## Middleware, in order
 
 `RequestID` → `Log` → `Cache` → (`canonicalHost`, with `WithCanonicalHost`) → `Recover` → `deadline`
-→ `GetHead`.
+→ `headAsGet`.
 
 `deadline` (AOC-065, § 3) gives every request's context `RequestDeadline`. It is mounted with
 `r.Use` ahead of every route, so everything a handler starts is bounded.
@@ -413,8 +414,9 @@ The path decides, not `Accept`: a path is a fact about which contract was addres
 the thing that broke.
 
 ⚠️ 405 was JSON everywhere until AOC-024 verify round 2, so a browser GET on a fragment
-route handed a person raw JSON. ⚠️ `HEAD` is answered on every route via
-`chi/middleware.GetHead`; without it chi replied 405 to monitors and link checkers.
+route handed a person raw JSON. ⚠️ `HEAD` is answered on every route via `headAsGet`
+(AOC-079; chi's `middleware.GetHead` missed a mount's bare path); without it chi replied 405 to
+monitors and link checkers.
 
 ### Assets
 

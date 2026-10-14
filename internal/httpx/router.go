@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
 )
 
 // NewRouter builds the whole route tree.
@@ -125,9 +124,11 @@ func newRouter(b Build, site SiteRoutes, assets http.Handler, mountV1 V1Routes, 
 	// ⭐ HEAD. chi's r.Get registers GET only, so every public page answered HEAD with 405
 	// — on a site whose entire purpose is being crawled and linked, where uptime monitors,
 	// link checkers and `curl -I` all default to HEAD (AOC-024 verify round 2, measured
-	// live). GetHead routes an unmatched HEAD to the GET handler and discards the body,
-	// which keeps Content-Length honest rather than faking it per route.
-	r.Use(middleware.GetHead)
+	// live). headAsGet routes every HEAD as GET; net/http sends no body for a HEAD,
+	// so Content-Length stays honest rather than faked per route. chi's middleware.GetHead did
+	// this only where it found no HEAD route, and on a mount's bare path (/v1/items) it found
+	// the mount's all-method stub: HEAD /v1/items and /v1/taxonomies were 405 (AOC-079).
+	r.Use(headAsGet)
 
 	// chi's defaults write text/plain. Route them through the central mapper so that
 	// every response from this service, success or failure, is the same JSON shape.
