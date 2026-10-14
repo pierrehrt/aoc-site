@@ -10,24 +10,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); thi
 
 ## [0.8.2] - 2026-10-14
 
-Fixes and chores: a stray byte in a search answers 400 instead of a server error, `HEAD` answers
-everywhere, and the keyboard keeps its place on the Armory. No migration.
-
-### Fixed
-
-- A NUL byte or invalid UTF-8 in an Armory search, or in a `/v1/items` or `/v1/sources/tree`
-  parameter, answers 400 (on the Armory, with the page's own message) instead of 500, and the
-  database is never asked; in an item's address (`/v1/items/{slug}`, `/armory/{slug}`) it is a 404.
-  The check covers every name and value the query string parses into, so such a byte in a
-  parameter's name, in a parameter nothing reads or in a repeat nothing reads, ignored before, is a
-  400 too (AOC-069)
-- `HEAD` answers what `GET` answers on every path: `HEAD /v1/items` and `HEAD /v1/taxonomies`, with
-  or without the trailing slash, answered 405 (AOC-079)
-- On the Armory, removing a filter pill, "clear all", the pager and the sort links, followed with the
-  keyboard, keep focus on that control or the one that took its place instead of dropping it to the
-  page; for a mouse click or a tap nothing changes on screen (AOC-071)
-- A failed `make schema-dump` leaves `docs/database-schema.sql` as it was instead of truncating it
-  (AOC-029)
+Fixes and chores: a NUL or invalid byte in a search answers 400 instead of a server error, `HEAD`
+answers like `GET` everywhere, and the keyboard keeps its place on the Armory. No migration.
 
 ### Changed
 
@@ -37,7 +21,25 @@ everywhere, and the keyboard keeps its place on the Armory. No migration.
 - Five older sentences in the code's docs (caching, attribution, the canonical-host redirect, an
   HTML rejection, a 404's cache time) are scoped to what the code does (AOC-080)
 - The test helper drops only throwaway test databases more than two hours old, so two test runs on
-  one database server no longer break each other (AOC-070)
+  one database server no longer drop each other's databases (AOC-070)
+
+### Fixed
+
+- A NUL byte or invalid UTF-8 in an Armory search, or in a `/v1/items` or `/v1/sources/tree` text
+  filter, answers 400 (on the Armory, with the page's own message) instead of 500, and the
+  database is never asked; in an item's address (`/v1/items/{slug}`, `/armory/{slug}`) it is a 404.
+  The check covers every name and value the query string parses into, so such a byte in a
+  parameter's name, in a parameter nothing reads or in a repeat nothing reads, ignored before, is a
+  400 too (AOC-069)
+- `HEAD` answers what `GET` answers on every path: at the origin, `HEAD /v1/items` and
+  `HEAD /v1/taxonomies`, with or without the trailing slash, answered 405 (through Cloudflare they
+  already answered 200) (AOC-079)
+- On the Armory, removing a filter pill, "clear all", the pager and the sort links, followed with the
+  keyboard, keep focus on that control or the one that took its place (after the last pill, the
+  pill before it; after the only pill, "clear all") instead of dropping it to the page. After a
+  mouse click or a tap nothing changes on screen in Chrome, where it was measured (AOC-071)
+- A failed `make schema-dump` leaves `docs/database-schema.sql` as it was instead of truncating it
+  (AOC-029)
 
 ## [0.8.1] - 2026-10-07
 
