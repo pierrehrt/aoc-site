@@ -134,6 +134,11 @@
     </aside>
   </div>
 </form>
+{{/* The rows' "+" buttons post here (form="gear-add"), out here because the form above holds them and
+     forms do not nest. No action: a form posts to the address the reader is on, and that address is
+     the state, kept current by htmx's push and replace, so nothing here goes stale when the rows are
+     swapped. The body is only add=<id>; the answer is the state's 303 (AOC-101). */}}
+<form id="gear-add" method="post" hidden></form>
 {{/* The gear builder's island (AOC-051): dragging, copying the link, the builds kept in the browser. */}}
 <script type="module" src="{{asset "gear.js"}}"></script>
 {{/* The tooltip beside the cursor on an item's name (AOC-074): an enhancement; the name is a link. */}}

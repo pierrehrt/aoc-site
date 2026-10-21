@@ -200,8 +200,9 @@ func TestTheBuildsIDRidesOnTheLinksButNotTheShareLink(t *testing.T) {
 	if !strings.Contains(body, `<input type="hidden" name="gear_id" value="abc123">`) {
 		t.Error("the id does not ride in the form")
 	}
-	if !strings.Contains(body, `href="/armory?gear=test-head:1&amp;gear_id=abc123&amp;add=3"`) {
-		t.Error("a + must carry the id")
+	// A "+" posts to the address it is on (AOC-101), so the id rides along in that address.
+	if loc := get(t, gearRouter(t, gearCorpus()), http.MethodPost, "/armory?gear=test-head:1&gear_id=abc123", nil, "add=3").Header().Get("Location"); !strings.Contains(loc, "gear_id=abc123") {
+		t.Errorf("a + must keep the id: → %q", loc)
 	}
 	if !strings.Contains(body, `href="`+base+`/armory?gear=test-head:1" data-gear-copy`) {
 		t.Error("the share link must not carry the sender's id")
@@ -244,11 +245,106 @@ func TestRowsWithASlotCarryThePlusAndTheDragData(t *testing.T) {
 	if !strings.Contains(body, `<tr data-row data-gear-id="3" data-gear-slots="test-main test-off"`) {
 		t.Error("item 3's row lacks its drag data")
 	}
-	if !strings.Contains(body, `href="/armory?gear=test-head:1&amp;add=3" rel="nofollow" hx-get="/armory?gear=test-head:1&amp;add=3"`) {
-		t.Error("item 3's + must add to this state's build, and say nofollow: it is an action (robots.txt too)")
+	if !strings.Contains(body, `<button type="submit" form="gear-add" name="add" value="3" title="Add to the gear builder"`) {
+		t.Error("item 3's + must be a button of the gear-add form, posting add=3")
 	}
-	if regexp.MustCompile(`data-gear-id="4"|add=4"`).MatchString(body) {
+	if regexp.MustCompile(`data-gear-id="4"|name="add" value="4"`).MatchString(body) {
 		t.Error("item 4 goes in no slot and has a + or drag data")
+	}
+}
+
+// ⭐ AOC-101: no page offers an add as a URL. A "+" link was an action at its own address, and every
+// answer was a build page with 50 more: crawlers walked them without end (up to 37 GB a day). The
+// "+" is a button now, its add in the body of a POST, so nothing on a page names an add.
+func TestNoPageOffersAnAddAsAURL(t *testing.T) {
+	h := gearRouter(t, gearCorpus())
+	for _, path := range []string{"/armory", "/armory?gear=test-head:1", "/armory?gear=test-head:1&gear_class=test-other&gear_id=abc123&q=Test"} {
+		body := get(t, h, http.MethodGet, path, nil, "").Body.String()
+		if strings.Contains(body, "add=") {
+			t.Errorf("%s: the page names an add=: %q", path, body[max(0, strings.Index(body, "add=")-120):strings.Index(body, "add=")+20])
+		}
+		// One "+" per row that goes in a slot (items 1, 2 and 3 of the corpus), and none for the rest.
+		if n := strings.Count(body, `<button type="submit" form="gear-add" name="add" value="`); n != 3 {
+			t.Errorf("%s: %d + buttons, want 3", path, n)
+		}
+		// One form, with no action (it posts to the address the reader is on), after the filter form:
+		// forms do not nest, and the rows are inside the filter form.
+		if n := strings.Count(body, `<form id="gear-add" method="post" hidden></form>`); n != 1 {
+			t.Fatalf("%s: %d gear-add forms, want 1", path, n)
+		}
+		if !regexp.MustCompile(`(?s)</form>\s*<form id="gear-add"`).MatchString(body) || strings.Count(body, "<form") != 2 {
+			t.Errorf("%s: the gear-add form must stand after the page's one filter form, not inside it", path)
+		}
+	}
+}
+
+// Without JavaScript the "+" posts add=<id> to the address it is on. The answer is the 303 a GET
+// add on that address gives — the same state, at its own URL, so a reload never adds twice.
+func TestAPostedAddIsA303ToTheSameStateAsAGetAdd(t *testing.T) {
+	h := gearRouter(t, gearCorpus())
+	for _, c := range []struct{ state, add string }{
+		{"/armory", "1"},
+		{"/armory?q=Test", "1"},
+		{"/armory?gear=test-head:1", "3"},
+		{"/armory?gear=test-head:1", "test-off:3"},
+		{"/armory?gear=test-head:1&gear_class=test-other&p=1&rarity=epic", "2"},
+		{"/armory?gear=test-head:1&gear_id=abc123", "test-main:3"},
+	} {
+		sep := "?"
+		if strings.Contains(c.state, "?") {
+			sep = "&"
+		}
+		want := get(t, h, http.MethodGet, c.state+sep+"add="+url.QueryEscape(c.add), nil, "")
+		got := get(t, h, http.MethodPost, c.state, nil, "add="+url.QueryEscape(c.add))
+		if want.Code != http.StatusSeeOther || got.Code != http.StatusSeeOther || got.Header().Get("Location") != want.Header().Get("Location") {
+			t.Errorf("POST %s add=%s: %d → %q; GET add: %d → %q", c.state, c.add, got.Code, got.Header().Get("Location"), want.Code, want.Header().Get("Location"))
+		}
+		if cc := got.Header().Get("Cache-Control"); cc != "no-store" {
+			t.Errorf("POST %s: Cache-Control %q, want no-store", c.state, cc)
+		}
+	}
+}
+
+// A refused add says why, on POST as on GET, and changes nothing.
+func TestARefusedPostedAddSaysWhy(t *testing.T) {
+	rr := get(t, gearRouter(t, gearCorpus()), http.MethodPost, "/armory?gear=test-head:1", nil, "add=test-off:1")
+	body := rr.Body.String()
+	if rr.Code != http.StatusOK || !strings.Contains(body, "Test Item 1 does not go in the Test Off slot.") {
+		t.Fatalf("%d, refusal shown: %v", rr.Code, strings.Contains(body, "does not go in"))
+	}
+	if !strings.Contains(body, `<input type="hidden" name="gear" value="test-head:1">`) || strings.Contains(body, `value="test-off:1"`) {
+		t.Error("a refused add changed the build")
+	}
+	if cc := rr.Header().Get("Cache-Control"); cc != "no-store" {
+		t.Errorf("Cache-Control %q, want no-store", cc)
+	}
+}
+
+// A POST exists only to add. One that cannot be read, or has nothing to add, or a bad add, is a 400
+// naming it, never a 500. The add is the body's: one in a POST's query string is not read.
+func TestABadPostedAddIsA400(t *testing.T) {
+	h := gearRouter(t, gearCorpus())
+	for name, body := range map[string]string{
+		"no add":           "other=1",
+		"an empty add":     "add=",
+		"not a number":     "add=abc",
+		"a NUL byte":       "add=%00",
+		"invalid UTF-8":    "add=%FF",
+		"a bad slot":       "add=Bad%20Slot:1",
+		"a body over 1KiB": "add=1&pad=" + strings.Repeat("x", 1<<10),
+	} {
+		rr := get(t, h, http.MethodPost, "/armory?gear=test-head:1", nil, body)
+		if rr.Code != http.StatusBadRequest {
+			t.Errorf("%s: %d, want 400", name, rr.Code)
+		}
+	}
+	rr := get(t, h, http.MethodPost, "/armory?gear=test-head:1&add=3", nil, "other=1")
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("an add in a POST's query string was read: %d → %q", rr.Code, rr.Header().Get("Location"))
+	}
+	rr = get(t, h, http.MethodPost, "/armory?add=test-off:1", nil, "add=1")
+	if rr.Code != http.StatusSeeOther || rr.Header().Get("Location") != "/armory?gear=test-head:1" {
+		t.Errorf("the body's add must be the one done: %d → %q", rr.Code, rr.Header().Get("Location"))
 	}
 }
 

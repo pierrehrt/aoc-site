@@ -87,6 +87,8 @@ const ogImageAsset = "og-card.png"
 func (h *Handler) Routes(r chi.Router) {
 	r.Get("/", h.home)
 	r.Get("/armory", h.armory)
+	// The gear builder's "+" without JavaScript (AOC-101): the same page, with the add in the body.
+	r.Post("/armory", h.armory)
 	r.Get("/armory/{slug}", h.item)
 	for _, n := range siteNav {
 		if n.Soon {

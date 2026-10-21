@@ -27,8 +27,10 @@ type Gear struct {
 	SumNote                              string     // "raw sum: …"
 	Refusal                              string     // why the last add did not happen, or ""
 	EmptyText                            string     // the stats box when there is nothing to sum
-	// AddURLs is each list row's "+": this state with `add=<id>`. Only rows that go in a slot.
-	AddURLs map[int32]string
+	// Addable is the list rows that get a "+": the rows that go in a slot. The "+" is a button that
+	// posts `add=<id>` to the address the reader is on, never a URL of its own (AOC-101: crawlers
+	// walked those links without end).
+	Addable map[int32]bool
 	// Dim is the list rows the picked class cannot wear (the design's .34).
 	Dim map[int32]bool
 }
@@ -110,7 +112,7 @@ func gearProbe() Gear {
 		SumNote:   "raw sum: test",
 		Refusal:   "Test Item Delta does not go in the Test Head slot.",
 		EmptyText: "Test empty text.",
-		AddURLs:   map[int32]string{1: "/armory?add=1"},
+		Addable:   map[int32]bool{1: true},
 		Dim:       map[int32]bool{2: true},
 	}
 }

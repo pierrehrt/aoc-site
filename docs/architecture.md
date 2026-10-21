@@ -790,12 +790,24 @@ filter. Every rule is `internal/builds` (`doc.go`), which `/v1/builds/compute` c
     with no second copy of it (`DECISIONS.md` 2026-10-05).
 - **`add` is an action.** "+" sends `add=<id>`; a drop sends `add=<slot>:<id>`. `builds.Service.Add`
   places the item, or refuses it with a reason the pane shows. It returns the computed result from
-  the one load it made. The "+" links are `rel="nofollow"`, and robots.txt disallows
-  `/armory?*add=`: every answer is a build page with 50 more "+" links, so a crawler following them
-  would never end. The canonical keeps build URLs out of the index; this keeps them out of the
-  crawl. The answer is the new state's URL: a
-  303 for a plain GET, `HX-Push-Url` for htmx. So no address keeps an action and a reload never
-  adds twice. The page's script never copies `add` into the form (`aocFormFrom`).
+  the one load it made. The answer is the new state's URL: a 303 without htmx, `HX-Push-Url` with
+  it. So no address keeps an action and a reload never adds twice. The page's script never copies
+  `add` into the form (`aocFormFrom`).
+- **⭐ No page names an add as a URL (AOC-101).** Every answer to an add is a build page with 50
+  more "+", so "+" links made an endless space. Crawlers walked it, `rel="nofollow"` and robots.txt's
+  `/armory?*add=` notwithstanding: Meta's at up to 37 GB a day of Railway egress, then crawlers on
+  Alibaba Cloud under ordinary Chrome user agents. So the "+" is a **button**, `form="gear-add"
+  name="add" value="<id>"`, of one empty `<form id="gear-add" method="post">` that stands after the
+  page's filter form (the rows are inside that form, and forms do not nest). The form has no
+  `action`: it posts to the address the reader is on, which is the state, and htmx's push and
+  replace keep it current, so no swap can leave it stale. **`POST /armory`** is the same handler:
+  the state from the URL (the parsers read `r.URL.Query()` only), the add from the body only, which
+  is capped at 1 KiB. A POST with nothing to add, or a bad add, is a 400. With JavaScript,
+  `gear.js` takes the click and sends the add as an htmx GET built in script, so no crawler that
+  reads links finds it. `GET …&add=` stays for that, for tabs opened before AOC-101, and for the
+  addresses crawlers had already queued: each answers with a 303 to a page that offers no more.
+  The POST changes nothing on the server and reads no cookie, so it needs no CSRF token. ⚠️ A POST
+  that writes (EP-06) will. `TestNoPageOffersAnAddAsAURL` keeps `add=` out of every page.
 - **The rules** (`builds.Service`):
   - fit is `item_equip_locations`;
   - a two-hander (`item_types.two_handed`) takes every other hand, but for its
@@ -816,10 +828,10 @@ filter. Every rule is `internal/builds` (`doc.go`), which `/v1/builds/compute` c
 - **One answer redraws it.** `armory_update` carries the pane (`#gear-body`), the strip's and the
   phone button's counts out of band. The class picker sends the form itself (`hx-include="closest
   form"`), so the page's `htmx:beforeRequest` copies nothing from its bare `/armory` path into the
-  form. It did, and the search box (which no answer redraws) went blank (AOC-051 review #1). "+", ×, clear, "remove N conflicting" and the class picker are
-  links and a form field through the page's existing htmx flow. The list's rows carry the "+" (a
-  link: it works without JavaScript; shown on hover and focus where a pointer hovers, always on a
-  touch screen) and, when a class is picked, the design's dimming of what it cannot wear (`Wears`,
+  form. It did, and the search box (which no answer redraws) went blank (AOC-051 review #1). ×, clear, "remove N conflicting" and the class picker are
+  links and a form field through the page's existing htmx flow; "+" is a button the island sends
+  through that same flow (above). The list's rows carry the "+" (a button: it works without
+  JavaScript; shown on hover and focus where a pointer hovers, always on a touch screen) and, when a class is picked, the design's dimming of what it cannot wear (`Wears`,
   the same rule as a slot's conflict).
 - **Folds.** Open and folded are an unnamed checkbox (`#gear-open`), checked on load when the URL
   carries a build (`gear=` alone is an open, empty one) or a refusal. Open, it folds the filters
