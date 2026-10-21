@@ -33,10 +33,12 @@ const sitemapProtocolMax = 50000
 // Railway host is redirected rather than disallowed. Accepted here: the smoke page is linked from
 // nowhere, so the "indexed without a snippet" case needs an outside link to a page due for deletion.
 //
-// /armory?*add= (AOC-051): the gear builder's "+" is an action, not a page. Each answer is a build URL
-// carrying 50 more "+" links, so a crawler following them would fetch builds × filters × pages for
-// ever; the canonical keeps those out of the index but not out of the crawl. Wildcards are Google's
-// and Bing's robots syntax. The links also carry rel="nofollow".
+// /armory?*add= (AOC-051): the gear builder's add is an action, not a page. Each answer is a build URL
+// carrying 50 more "+", so a crawler following them would fetch builds × filters × pages for ever;
+// the canonical keeps those out of the index but not out of the crawl. Wildcards are Google's and
+// Bing's robots syntax. Crawlers walked the "+" links anyway (AOC-101), so since then no page links
+// to an add: the "+" is a button that posts. This line stays for the island's GET and for the
+// addresses crawlers had already queued.
 var robotsDisallow = []string{"/_smoke", "/v1/", "/health", "/armory?*add="}
 
 func (h *Handler) robots(w http.ResponseWriter, r *http.Request) {

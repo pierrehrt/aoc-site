@@ -4,7 +4,8 @@
 // ⭐ It decides nothing. Where an item goes, what a two-hander holds, what a class cannot wear and what
 // is summed are the server's (internal/builds), and the pane is the server's HTML: this file only
 // sends what the reader did and keeps what a browser alone can keep. Without it the builder still
-// works — every control in the pane is a link or a form field, and each row's "+" is a link.
+// works — every control in the pane is a link or a form field, and each row's "+" is a button that
+// posts its add to the page's address (never a link: crawlers walked those without end, AOC-101).
 //
 // What only it does:
 //   - drag a list row onto a slot → the request a "+" makes, naming the slot (add=<slot>:<id>);
@@ -346,12 +347,11 @@ function mount() {
       const c = document.getElementById("filters-collapsed");
       if (c) c.checked = false;
     }
-    const plus = t.closest("a.gear-add");
+    const plus = t.closest("button.gear-add");
     if (plus) {
-      e.preventDefault();
-      e.stopPropagation(); // htmx would send the link's own URL, which has no kept build in it
-      const id = new URL(plus.href, location.href).searchParams.get("add");
-      if (id) add(id);
+      e.preventDefault(); // not the form's POST and its full load: the same add, through htmx
+      e.stopPropagation();
+      if (plus.value) add(plus.value);
       return;
     }
     const share = t.closest("[data-gear-copy]");

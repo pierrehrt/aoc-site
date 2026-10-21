@@ -1,7 +1,6 @@
 package pages
 
 import (
-	"net/url"
 	"strconv"
 	"strings"
 
@@ -30,7 +29,7 @@ func buildGear(f items.Filters, page int, res builds.Result, refusal string, row
 		// The build alone: the link to send opens the Armory as it opens for anyone, with this build —
 		// and without this browser's id for it (builds.Build.Shared).
 		ShareURL: base + armoryURL(items.Filters{}, 1, b.Shared()),
-		AddURLs:  map[int32]string{}, Dim: map[int32]bool{},
+		Addable:  map[int32]bool{}, Dim: map[int32]bool{},
 	}
 	for _, v := range b.Values()[builds.ParamGear] {
 		g.Hidden = append(g.Hidden, templates.HiddenInput{Name: builds.ParamGear, Value: v})
@@ -93,7 +92,7 @@ func buildGear(f items.Filters, page int, res builds.Result, refusal string, row
 
 	for _, it := range rows {
 		if len(it.EquipLocations) > 0 {
-			g.AddURLs[it.ID] = withParam(at(b), builds.ParamAdd, strconv.Itoa(int(it.ID)))
+			g.Addable[it.ID] = true
 		}
 		if res.Class != nil {
 			classes := make([]string, 0, len(it.Classes))
@@ -110,15 +109,6 @@ func buildGear(f items.Filters, page int, res builds.Result, refusal string, row
 		}
 	}
 	return g
-}
-
-// withParam adds one parameter to a URL the page built.
-func withParam(u, k, v string) string {
-	sep := "?"
-	if strings.Contains(u, "?") {
-		sep = "&"
-	}
-	return u + sep + url.QueryEscape(k) + "=" + url.QueryEscape(v)
 }
 
 // gearTitle names a state with a build in it, for the title and description a shared link previews

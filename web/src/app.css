@@ -178,6 +178,10 @@ html.js .no-js-only { display: none !important; }
   }
   body:has(#gear-sheet:checked) { overflow: hidden; }
 }
+/* A row's "+" is a button since AOC-101 and was a link before: it keeps the link's focus ring, 1px out,
+   and its alignment, so it draws exactly as it did (measured against the link in Chrome). */
+.gear-add { text-align: start; }
+.gear-add:focus-visible { outline-offset: 1px; }
 /* A row's "+" (AOC-051): on hover and focus where there is a pointer that hovers; always where there is
    none (a touch screen, where it is the only way to add). */
 @media (hover: hover) {

@@ -25,6 +25,9 @@ import (
 
 const armoryPageSize = 50
 
+// maxAddBody caps a posted "+" (AOC-101). Its body is `add=<id>` or `add=<slot>:<id>`, a few dozen bytes.
+const maxAddBody = 1 << 10
+
 // sortLabels is presentation: the words on the sort control for the keys items.Sorts defines, with
 // the direction each one runs (the design's "Item level ↓").
 var sortLabels = map[string]string{items.SortILvl: "Item level ↓", items.SortName: "Name ↑", items.SortID: "Item id ↑"}
@@ -60,8 +63,24 @@ func (h *Handler) armory(w http.ResponseWriter, r *http.Request) {
 	}
 	var gear builds.Result
 	refusal, added := "", false
-	if a, ok, err := builds.ParseAdd(r.URL.Query()); err != nil {
+	// The add is in the URL on a GET (the island's request; a "+" link on a page made before AOC-101)
+	// and in the body on a POST (the "+" without JavaScript, AOC-101). Either way the state is the URL:
+	// the parsers above read r.URL.Query(), never a body.
+	addFrom := r.URL.Query()
+	if r.Method == http.MethodPost {
+		r.Body = http.MaxBytesReader(w, r.Body, maxAddBody)
+		if err := r.ParseForm(); err != nil {
+			httpx.RejectHTML(w, r, http.StatusBadRequest, "That form could not be read")
+			return
+		}
+		addFrom = r.PostForm
+	}
+	if a, ok, err := builds.ParseAdd(addFrom); err != nil {
 		h.invalidSearch(w, r, err)
+		return
+	} else if !ok && r.Method == http.MethodPost {
+		// A POST exists only to add: one with nothing to add is a mistake, not a page.
+		h.invalidSearch(w, r, fmt.Errorf("%w: %s needs an item id (a whole number from 1)", httpx.ErrInvalid, builds.ParamAdd))
 		return
 	} else if ok {
 		// Add answers with what the builder shows for the build it made: one load, not two.
