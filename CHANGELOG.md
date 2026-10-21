@@ -13,13 +13,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); thi
 The gear builder's "+" is a button, not a link, so crawlers can no longer walk the builder without
 end. No migration.
 
-### Changed
+### Fixed
 
 - Each Armory row's "+" (add to the gear builder) is a button that posts the add to the address
   the reader is on (`POST /armory`, the add in a body capped at 1 KiB), instead of a link to a new
-  address. No page carries an `add=` link any more, so a crawler following links reaches no new
-  builds; following the "+" links, crawlers sent up to 37 GB a day from Railway (measured
-  2026-10-18). Without JavaScript the "+" lands on the same state as before, through a 303. With
+  address. No page carries an `add=` link any more, so a crawler following links can reach only the
+  builds it already knows and their subsets. While crawlers walked the builder, the api's traffic
+  out of Railway reached 37 GB a day (2026-10-18), against at most 0.022 GB a day from 10-01 to
+  10-09. Without JavaScript the "+" lands on the same state as before, through a 303. With
   JavaScript nothing changes, except that Space on a focused "+" now adds too. A missing or
   malformed add, or a body that cannot be read, is a 400. `GET …&add=` answers as before (AOC-101)
 
