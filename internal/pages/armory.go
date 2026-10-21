@@ -68,12 +68,16 @@ func (h *Handler) armory(w http.ResponseWriter, r *http.Request) {
 	// the parsers above read r.URL.Query(), never a body.
 	addFrom := r.URL.Query()
 	if r.Method == http.MethodPost {
-		r.Body = http.MaxBytesReader(w, r.Body, maxAddBody)
-		if err := r.ParseForm(); err != nil {
+		// The body alone: ParseForm reads the URL's query too, and refuses a pair r.URL.Query() drops
+		// (a stray % or ;), so a page the GET serves had a "+" that answered 400 (AOC-101 verify round 1).
+		body := r.Clone(r.Context())
+		body.URL.RawQuery = ""
+		body.Body = http.MaxBytesReader(w, r.Body, maxAddBody)
+		if err := body.ParseForm(); err != nil {
 			httpx.RejectHTML(w, r, http.StatusBadRequest, "That form could not be read")
 			return
 		}
-		addFrom = r.PostForm
+		addFrom = body.PostForm
 	}
 	if a, ok, err := builds.ParseAdd(addFrom); err != nil {
 		h.invalidSearch(w, r, err)
