@@ -69,6 +69,13 @@ func TestEveryFilterReachesTheQuery(t *testing.T) {
 			return eqList(p.ArmourWeights, "heavy", "light")
 		}, "armour_weight"},
 		{"class=test-class&class=test-other", func(p sqlcgen.ListItemsParams) bool { return eqList(p.Classes, "test-class", "test-other") }, "class"},
+		// AOC-081: used_by is its own list; class keeps "restricted to" — neither reads the other.
+		{"used_by=test-class,test-other", func(p sqlcgen.ListItemsParams) bool {
+			return eqList(p.UsedBy, "test-class", "test-other") && p.Classes == nil
+		}, "used_by"},
+		{"class=test-class&used_by=test-other", func(p sqlcgen.ListItemsParams) bool {
+			return eqList(p.Classes, "test-class") && eqList(p.UsedBy, "test-other")
+		}, "class and used_by, each its own"},
 		{"region=cimmeria", func(p sqlcgen.ListItemsParams) bool { return p.Region != nil && *p.Region == "cimmeria" }, "region"},
 		{"tier=pve-6", func(p sqlcgen.ListItemsParams) bool { return p.Tier != nil && *p.Tier == "pve-6" }, "tier"},
 		{"place=test-cave", func(p sqlcgen.ListItemsParams) bool {

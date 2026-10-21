@@ -77,8 +77,12 @@ type Filters struct {
 	EquipLocations []string
 	ArmourWeights  []string
 	Classes        []string
-	Currencies     []string
-	Sets           []string
+	// UsedBy is what a class USES (AOC-081): the items restricted to it, and the items restricted
+	// to nobody whose armour weight or item type it uses (the view item_used_by). Classes stays
+	// "restricted to".
+	UsedBy     []string
+	Currencies []string
+	Sets       []string
 
 	ItemType string
 	Region   string
@@ -494,6 +498,7 @@ func (s *Service) listParams(ctx context.Context, f Filters) (sqlcgen.ListItemsP
 		IDQuery:        idQuery(f.Query),
 		EquipLocations: listArg(f.EquipLocations),
 		Classes:        listArg(f.Classes),
+		UsedBy:         listArg(f.UsedBy),
 		PlaceSlugs:     placeSlugs,
 		ArmourWeights:  listArg(f.ArmourWeights),
 		Region:         ptrIfSet(f.Region),

@@ -245,6 +245,26 @@ ALTER SEQUENCE public.bosses_id_seq OWNED BY public.bosses.id;
 
 
 --
+-- Name: class_armour_weights; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.class_armour_weights (
+    class_id integer NOT NULL,
+    armour_weight_id integer NOT NULL
+);
+
+
+--
+-- Name: class_item_types; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.class_item_types (
+    class_id integer NOT NULL,
+    item_type_id integer NOT NULL
+);
+
+
+--
 -- Name: classes; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -702,6 +722,32 @@ CREATE TABLE public.items (
     source_note character varying(300) NOT NULL,
     open_question character varying(300)
 );
+
+
+--
+-- Name: item_used_by; Type: VIEW; Schema: public; Owner: -
+--
+
+CREATE VIEW public.item_used_by AS
+ SELECT ic.item_id,
+    ic.class_id
+   FROM public.item_classes ic
+UNION
+ SELECT i.item_id,
+    caw.class_id
+   FROM (public.items i
+     JOIN public.class_armour_weights caw ON ((caw.armour_weight_id = i.armour_weight_id)))
+  WHERE (NOT (EXISTS ( SELECT 1
+           FROM public.item_classes ic
+          WHERE (ic.item_id = i.item_id))))
+UNION
+ SELECT i.item_id,
+    cit.class_id
+   FROM (public.items i
+     JOIN public.class_item_types cit ON ((cit.item_type_id = i.item_type_id)))
+  WHERE (NOT (EXISTS ( SELECT 1
+           FROM public.item_classes ic
+          WHERE (ic.item_id = i.item_id))));
 
 
 --
@@ -1432,6 +1478,22 @@ ALTER TABLE ONLY public.bosses
 
 
 --
+-- Name: class_armour_weights class_armour_weights_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.class_armour_weights
+    ADD CONSTRAINT class_armour_weights_pkey PRIMARY KEY (class_id, armour_weight_id);
+
+
+--
+-- Name: class_item_types class_item_types_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.class_item_types
+    ADD CONSTRAINT class_item_types_pkey PRIMARY KEY (class_id, item_type_id);
+
+
+--
 -- Name: classes classes_name_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2096,6 +2158,38 @@ ALTER TABLE ONLY public.bosses
 
 ALTER TABLE ONLY public.bosses
     ADD CONSTRAINT bosses_region_id_fkey FOREIGN KEY (region_id) REFERENCES public.regions(id);
+
+
+--
+-- Name: class_armour_weights class_armour_weights_armour_weight_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.class_armour_weights
+    ADD CONSTRAINT class_armour_weights_armour_weight_id_fkey FOREIGN KEY (armour_weight_id) REFERENCES public.armour_weights(id);
+
+
+--
+-- Name: class_armour_weights class_armour_weights_class_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.class_armour_weights
+    ADD CONSTRAINT class_armour_weights_class_id_fkey FOREIGN KEY (class_id) REFERENCES public.classes(id);
+
+
+--
+-- Name: class_item_types class_item_types_class_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.class_item_types
+    ADD CONSTRAINT class_item_types_class_id_fkey FOREIGN KEY (class_id) REFERENCES public.classes(id);
+
+
+--
+-- Name: class_item_types class_item_types_item_type_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.class_item_types
+    ADD CONSTRAINT class_item_types_item_type_id_fkey FOREIGN KEY (item_type_id) REFERENCES public.item_types(id);
 
 
 --
