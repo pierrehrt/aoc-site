@@ -350,7 +350,7 @@ func armoryURL(f items.Filters, page int, g builds.Build) string {
 	}
 	// A list means any of its values, in any order, so one state has ONE URL: each list sorted
 	// (AOC-064 verify F4 — ?rarity=rare&rarity=epic and ?rarity=epic&rarity=rare were two canonicals).
-	for _, k := range []string{"rarity", "equip_location", "armour_weight", "class", "currency", "set", "place"} {
+	for _, k := range []string{"rarity", "equip_location", "armour_weight", "class", "used_by", "currency", "set", "place"} {
 		sort.Strings(v[k])
 	}
 	if v.Get("sort") == items.SortILvl {

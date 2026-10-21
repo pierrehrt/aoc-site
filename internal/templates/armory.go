@@ -248,7 +248,7 @@ func armoryProbe() ArmoryData {
 				{Legend: "Armour weight", Kind: "sans", Options: []RailOption{
 					{Name: "armour_weight", ID: "f-armour_weight-tw", Value: "tw", Label: "Test Weight", Count: 2}}},
 				{Legend: "Class restriction", Kind: "class", Options: []RailOption{
-					{Name: "class", ID: "f-class-tc", Value: "tc", Label: "Test Class", Short: "TC", Count: 1}}}},
+					{Name: "used_by", ID: "f-used_by-tc", Value: "tc", Label: "Test Class", Short: "TC", Count: 1}}}},
 			Levels: []RailRange{{Legend: "Item level", MinName: "ilvl_min", MaxName: "ilvl_max", MinValue: "70", Lo: "1", Hi: "90"}},
 			Hidden: []HiddenInput{{Name: "sort", Value: "name"}},
 		},

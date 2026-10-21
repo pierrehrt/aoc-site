@@ -26,7 +26,12 @@ type railFacet struct {
 	set                 func(*items.Filters, []string)
 }
 
-// The design's four groups in its order, then the two facets it has no control for.
+// The design's four groups in its order, then the facets it has no control for.
+//
+// ⭐ The class chips are `used_by` (AOC-081): picking a class lists what it uses, the items restricted
+// to it and the unrestricted items of a weight or type it uses (Pierre, 2026-10-14). `class`, which
+// is "restricted to" on the page as in /v1 (one parser), has no control; an old `class=` link keeps
+// its answer and shows as a pill, "restricted: DT".
 var (
 	checkFacets = []railFacet{
 		{"rarity", "Rarity", "rarity", "list", func(fc *items.Facets) items.FacetGroup { return fc.Rarity },
@@ -35,10 +40,12 @@ var (
 			func(f items.Filters) []string { return f.EquipLocations }, func(f *items.Filters, v []string) { f.EquipLocations = v }},
 		{"armour_weight", "Armour weight", "weight", "sans", func(fc *items.Facets) items.FacetGroup { return fc.ArmourWeight },
 			func(f items.Filters) []string { return f.ArmourWeights }, func(f *items.Filters, v []string) { f.ArmourWeights = v }},
-		{"class", "Class restriction", "class", "class", func(fc *items.Facets) items.FacetGroup { return fc.Class },
-			func(f items.Filters) []string { return f.Classes }, func(f *items.Filters, v []string) { f.Classes = v }},
+		{"used_by", "Class restriction", "class", "class", func(fc *items.Facets) items.FacetGroup { return fc.UsedBy },
+			func(f items.Filters) []string { return f.UsedBy }, func(f *items.Filters, v []string) { f.UsedBy = v }},
 	}
 	paneless = []railFacet{
+		{"class", "Class restriction", "restricted", "", func(fc *items.Facets) items.FacetGroup { return fc.Class },
+			func(f items.Filters) []string { return f.Classes }, func(f *items.Filters, v []string) { f.Classes = v }},
 		{"currency", "Currency", "currency", "", func(fc *items.Facets) items.FacetGroup { return fc.Currency },
 			func(f items.Filters) []string { return f.Currencies }, func(f *items.Filters, v []string) { f.Currencies = v }},
 		{"set", "Set", "set", "", func(fc *items.Facets) items.FacetGroup { return fc.Set },

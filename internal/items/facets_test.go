@@ -129,7 +129,7 @@ func TestFacetsAreOnlyInTheEnvelopeWhenAskedFor(t *testing.T) {
 	if !ok {
 		t.Fatalf("facets=1 returned no facets object: %v", body)
 	}
-	for _, k := range []string{"rarity", "equip_location", "armour_weight", "class", "currency", "set"} {
+	for _, k := range []string{"rarity", "equip_location", "armour_weight", "class", "used_by", "currency", "set"} {
 		g, ok := fac[k].(map[string]any)
 		if !ok {
 			t.Errorf("facet %q missing", k)

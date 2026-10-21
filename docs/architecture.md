@@ -587,7 +587,9 @@ is the visual source of truth, distilled from `discovery/design/armory-2026-10-0
   measured.
 - **The filter pane is exactly the design's five sections** (Pierre, 2026-10-01: *"I want exactly like it
   is in the design"*): Rarity (checkbox rows with counts), Slot, Armour weight and Class restriction
-  (toggle chips, no numbers), Item level (two stacked sliders and the note). Vendor price, required
+  (toggle chips, no numbers), Item level (two stacked sliders and the note). Since AOC-081 the class
+  chips set **`used_by`** (what the class uses), and `class` (restricted to) has no control: an old
+  `class=` link keeps its answer and shows as the pill "restricted: DT". Vendor price, required
   level, currency and set left the pane. They still filter by link and by `/v1`, and an active one
   rides along as a hidden input and shows as a pill (`TestTheOtherFiltersStillApplyAsPills`). Its
   parts were measured against the prototype in the same browser: rows 16px on a 21px pitch,
@@ -1377,7 +1379,8 @@ WITH filtered AS (             -- byte-identical in ListItems, CountItemFacets, 
   SELECT i.item_id, …,          -- what the facets group by: rarity_id, set_id, levels, priced
          <q, item_type, place, region, tier, unchained, pvp, source> AS in_base,   -- no facet of their own
          <rarity rule>   AS in_rarity,   <slot rule> AS in_slot,   <weight rule> AS in_weight,
-         <class rule>    AS in_class,    <ilvl range> AS in_ilvl,  <reqlvl range> AS in_reqlvl,
+         <class rule>    AS in_class,    <used_by rule> AS in_used_by,
+         <ilvl range>    AS in_ilvl,     <reqlvl range> AS in_reqlvl,
          <price rule>    AS in_price,    <currency rule> AS in_currency,   <set rule> AS in_set
   FROM items i …)
 ListItems:        … WHERE every flag
@@ -1409,6 +1412,18 @@ a group's "Any":  count(*) FILTER (WHERE every flag except its own)
   (190 mutants): the two fixture tests kill all 190. The first two runs did not, and what they found
   is now in the fixture — `OFFSET NULL` is `OFFSET 0` (a "weightless" item silently had the first
   weight), and combinations where a level span vanishes or moves.
+- **What a class uses is a view, `item_used_by(item_id, class_id)`** (AOC-081). It holds the items
+  restricted to a class (`item_classes`) and, for an item restricted to nobody, every class whose
+  `class_armour_weights` holds its armour weight or whose `class_item_types` holds its item type
+  (Pierre's table, 2026-10-14, seeded by `20261021120000_class_uses.sql`). The `in_used_by` flag, the
+  `used_by` facet and its "Any" all read the view, so the rule is written once, not in six places.
+  `class` (restricted to) is unchanged beside it. Measured on dev against the same binary built
+  without it: `/v1/items?facets=1` 26 → 36 ms, `/armory?used_by=dark-templar` 77 ms where
+  `/armory?class=dark-templar` takes 34 ms. A `UNION ALL` form measured the same, and one
+  `items × classes` SELECT took 4.4 s, so the view stays a plain `UNION`.
+  ⚠️ **"Uses" is not "can wear".** `classes.max_armour_weight`, the gear builder's ceiling, stays
+  NULL. A Dark Templar uses full plate and heavy but may wear anything (`DECISIONS.md` 2026-09-12 and
+  2026-10-21), so `gear_class` and `used_by` answer different questions on purpose.
 - **Several values per facet** (AOC-064, Pierre's validated design). A facet's flag is
   `= ANY(list)`, and a value's count is unchanged in meaning: the items with that value under the
   other facets. For a facet holding one value per item (rarity, armour weight, set), that is exactly
