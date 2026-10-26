@@ -8,6 +8,37 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); thi
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-26
+
+The Armory's class filter shows what a class uses: the items restricted to it, plus the gear with
+no class restriction that it wears. One migration.
+
+### Added
+
+- Picking a class in the Armory shows what that class uses: the items restricted to it, plus every
+  item with no class restriction whose armour weight or item type Pierre's table gives that class.
+  Rings, necklaces, back items and ammunition are listed for every class; an item restricted to
+  another class never is. On the data of 2026-10-21 a Dark Templar sees 1,335 items instead of 440.
+  The chips look as before and write `used_by=`; their counts are the lists they give (AOC-081)
+- `/v1/items` takes `used_by=<class slug>`, and with `facets=1` answers `facets.used_by`. Both are
+  additive: an answer without `used_by` is unchanged, except that a `facets=1` answer gains the
+  `used_by` group (AOC-081)
+
+### Changed
+
+- `class=` keeps its meaning, "restricted to", on `/armory` and `/v1/items` alike. On the page an
+  old `/armory?class=…` link lists the same restricted items as before, now shown as a pill,
+  "restricted: …", instead of a ticked chip (AOC-081)
+
+### Migration
+
+- `20261021120000_class_uses`: `class_armour_weights` (15 pairs) and `class_item_types` (115
+  pairs), seeded from Pierre's table, and the view `item_used_by`, the one place the rule is
+  written. `classes.max_armour_weight` stays empty: "uses" is not "can wear", and the gear builder
+  is unchanged. It is run against production **before** this deploy with
+  `scripts/release-migrate.sh`; 0.8.3 runs unchanged on it (new tables and a view that no query of
+  0.8.3 reads). The importer never writes them, so `import` needs no redeploy (AOC-081)
+
 ## [0.8.3] - 2026-10-21
 
 The gear builder's "+" is a button, not a link, so crawlers can no longer walk the builder without

@@ -133,11 +133,13 @@ func parseFilters(r *http.Request) (Filters, error) {
 		}
 	}
 	f := Filters{
-		// The six facets are lists (AOC-064), read like `place`: repeated, comma-separated, or both.
+		// The seven facets are lists (AOC-064; used_by, AOC-081), read like `place`: repeated,
+		// comma-separated, or both.
 		Rarities:       list(q, "rarity"),
 		EquipLocations: list(q, "equip_location"),
 		ArmourWeights:  list(q, "armour_weight"),
 		Classes:        list(q, "class"),
+		UsedBy:         list(q, "used_by"),
 		Currencies:     list(q, "currency"),
 		Sets:           list(q, "set"),
 		ItemType:       strings.TrimSpace(q.Get("item_type")),
@@ -255,6 +257,7 @@ func (f Filters) Values() url.Values {
 	many("equip_location", f.EquipLocations)
 	many("armour_weight", f.ArmourWeights)
 	many("class", f.Classes)
+	many("used_by", f.UsedBy)
 	str("region", f.Region)
 	str("tier", f.Tier)
 	many("currency", f.Currencies)

@@ -192,6 +192,8 @@ func withFacet(t *testing.T, f items.Filters, param, slug string) items.Filters 
 		f.ArmourWeights = v
 	case "class":
 		f.Classes = v
+	case "used_by":
+		f.UsedBy = v
 	case "currency":
 		f.Currencies = v
 	case "set":
@@ -234,7 +236,7 @@ func assertFacetsAreTheirRows(t *testing.T, s *items.Service, base items.Filters
 		param string
 		group items.FacetGroup
 	}{{"rarity", fc.Rarity}, {"equip_location", fc.EquipLocation}, {"armour_weight", fc.ArmourWeight},
-		{"class", fc.Class}, {"currency", fc.Currency}, {"set", fc.Set}} {
+		{"class", fc.Class}, {"used_by", fc.UsedBy}, {"currency", fc.Currency}, {"set", fc.Set}} {
 		if got := total(t, s, withFacet(t, base, g.param, "")); got != g.group.Any {
 			t.Errorf("%s: %s Any says %d, the list with %s unset has %d", label, g.param, g.group.Any, g.param, got)
 		}
@@ -365,6 +367,12 @@ func TestFacetCountsAreTheRowsTheyPromise(t *testing.T) {
 		"two slots and a class":       {EquipLocations: []string{firstSlot, etaSlot}, Classes: []string{secondClass}},
 		"two weights, two currencies": {ArmourWeights: []string{firstWeight, etaWeight}, Currencies: []string{firstCurrency, etaCurrency}},
 		"two sets and a rarity":       {Sets: []string{"test-facet-set-alpha", "test-facet-set-gamma"}, Rarities: []string{topRarity}},
+		// AOC-081: what a class uses, alone and beside the other filters, class (restricted to) included.
+		"one used_by":           {UsedBy: []string{secondClass}},
+		"used_by and class":     {UsedBy: []string{secondClass}, Classes: []string{secondClass}},
+		"used_by and a weight":  {UsedBy: []string{secondClass}, ArmourWeights: []string{firstWeight}},
+		"used_by and no price":  {UsedBy: []string{etaClass}, Price: &no},
+		"class, used_by of Eta": {Classes: []string{secondClass}, UsedBy: []string{etaClass}},
 	} {
 		if n := assertFacetsAreTheirRows(t, s, f, label); n == 0 {
 			t.Errorf("%s: nothing was checked", label)
@@ -381,7 +389,7 @@ func TestFacetCountsAreTheRowsTheyPromise(t *testing.T) {
 		param string
 		group items.FacetGroup
 	}{{"rarity", all.Facets.Rarity}, {"equip_location", all.Facets.EquipLocation}, {"armour_weight", all.Facets.ArmourWeight},
-		{"class", all.Facets.Class}, {"currency", all.Facets.Currency}, {"set", all.Facets.Set}} {
+		{"class", all.Facets.Class}, {"used_by", all.Facets.UsedBy}, {"currency", all.Facets.Currency}, {"set", all.Facets.Set}} {
 		for _, v := range g.group.Values {
 			if v.Count > 0 {
 				assertFacetsAreTheirRows(t, s, withFacet(t, items.Filters{}, g.param, v.Slug), g.param+"="+v.Slug)
@@ -449,7 +457,8 @@ func TestSeveralValuesInAGroupAreAnyOfThem(t *testing.T) {
 			group     items.FacetGroup
 			exclusive bool
 		}{{"rarity", res.Facets.Rarity, true}, {"armour_weight", res.Facets.ArmourWeight, true}, {"set", res.Facets.Set, true},
-			{"equip_location", res.Facets.EquipLocation, false}, {"class", res.Facets.Class, false}, {"currency", res.Facets.Currency, false}} {
+			{"equip_location", res.Facets.EquipLocation, false}, {"class", res.Facets.Class, false},
+			{"used_by", res.Facets.UsedBy, false}, {"currency", res.Facets.Currency, false}} {
 			var picked []string
 			var sum int64
 			for _, v := range g.group.Values {
@@ -473,6 +482,8 @@ func TestSeveralValuesInAGroupAreAnyOfThem(t *testing.T) {
 				f.EquipLocations = picked
 			case "class":
 				f.Classes = picked
+			case "used_by":
+				f.UsedBy = picked
 			case "currency":
 				f.Currencies = picked
 			}

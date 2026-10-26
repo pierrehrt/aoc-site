@@ -98,7 +98,8 @@ never a free-text value a client invented — except `q`, which is a name search
 `rarity` · `item_type` · `equip_location` · `armour_weight` · `class` · `region` · `tier` ·
 `place` (repeatable) · `pvp` (bool) · `unchained` (bool) · `q` · `sort` · `limit` · `offset` ·
 since AOC-049: `ilvl_min` · `ilvl_max` · `reqlvl_min` · `reqlvl_max` · `price` (bool) ·
-`currency` · `set` · `facets` (bool) · since AOC-050: `tab` · `source` · `get`
+`currency` · `set` · `facets` (bool) · since AOC-050: `tab` · `source` · `get` · since AOC-081:
+`used_by`
 
 - **`q`** matches the name (case-insensitive substring) — **and, when it is a whole number, the
   item's id exactly** (AOC-047): `q=2183` finds item 2183 as well as any item whose name contains
@@ -112,6 +113,16 @@ since AOC-049: `ilvl_min` · `ilvl_max` · `reqlvl_min` · `reqlvl_max` · `pric
 - **`price`** (AOC-049): `true` keeps items a vendor sells on **any** of their sources, `false`
   items no source has a price for. "Any", because the list shows items, not occurrences: an item
   free from a boss and sold by a vendor (689 in the corpus) has a price. `price=1` reads as `true`.
+- **`class`** (class slugs) keeps the items **restricted to** one of those classes: an item with no
+  class restriction is not among them. Unchanged since 0.1.0.
+- **`used_by`** (class slugs, AOC-081, additive) keeps what those classes **use**: the items
+  restricted to one of them, **plus** every item restricted to nobody whose armour weight or item
+  type such a class uses. Which weights and types a class uses is Pierre's table (2026-10-14),
+  seeded as `class_armour_weights` and `class_item_types` and joined once in the view
+  `item_used_by`. An item restricted only to other classes is never among them. An item with no
+  restriction and neither a used weight nor a used type is not either (a consumable, a mount, a pet,
+  armour with no recorded weight). With `class` too, an item must match both, like any two filters.
+  Without `used_by`, and without `facets`, every answer is byte-identical to what it was before AOC-081.
 - **`currency`** (currency slugs) keeps items bought with one of those currencies from at least one
   source; **`set`** (set slugs) keeps the items of those sets. Both are lists, like the other facets
   (below).
@@ -128,6 +139,7 @@ since AOC-049: `ilvl_min` · `ilvl_max` · `reqlvl_min` · `reqlvl_max` · `pric
     "equip_location": { "any": 4646, "values": [ … ] },
     "armour_weight":  { "any": 4646, "values": [ … ] },
     "class":          { "any": 4646, "values": [ { "slug": "…", "name": "…", "short_name": "…", "count": 0 }, … ] },
+    "used_by":        { "any": 4646, "values": [ { "slug": "…", "name": "…", "short_name": "…", "count": 0 }, … ] },
     "currency":       { "any": 4646, "values": [ … ] },
     "set":            { "any": 4646, "values": [ … ] },
     "price":          { "any": 4646, "count": 2067 },
@@ -138,7 +150,7 @@ since AOC-049: `ilvl_min` · `ilvl_max` · `reqlvl_min` · `reqlvl_max` · `pric
 
   (Counts illustrative.) A group lists **every** value of its vocabulary, read from the lookup
   table, **0 counts included**, in display order: rarities best first, slots head to necklace,
-  armour weights heaviest first, classes in `classes.sort_order` (Soldier, Rogue, Priest, Mage — AOC-065), currencies and sets by name. `any` is the
+  armour weights heaviest first, classes in `classes.sort_order` (Soldier, Rogue, Priest, Mage — AOC-065), for `class` and `used_by` alike (AOC-081: `facets.used_by` is additive), currencies and sets by name. `any` is the
   count with that facet unset. `price.count` is items with a vendor price, `any − count` those with
   none. `ilvl` / `reqlvl` are the lowest and highest level among the items the other filters leave,
   and are **absent** when none of them has that level.
@@ -228,7 +240,8 @@ Since AOC-069 also: a NUL byte or invalid UTF-8 in any name or value the query s
 a parameter's value or its name, including a parameter no filter reads and a repeated value no filter reads
 (`q=a%00b`, `place=%FF`, `?a%00b=1`, `?not_a_filter=%FF`, `?q=x&q=%FF`). Before, it depended on where
 the byte was (measured on 0.8.1): in a value a text filter reads (every value of the seven list
-filters `rarity`, `equip_location`, `armour_weight`, `class`, `currency`, `set` and `place`; the first
+filters `rarity`, `equip_location`, `armour_weight`, `class`, `currency`, `set` and `place`, and since
+AOC-081 `used_by`; the first
 of `item_type`, `region`, `tier` and `q`) it reached Postgres, which refuses both as text, so a 500;
 in the value another parameter reads (its first) a 400 by its own parsing; in a name, a parameter
 nothing reads or a repeat nothing reads (`?q=x&q=%FF`, `?limit=5&limit=a%00b`) it was ignored, a 200.
@@ -238,8 +251,8 @@ which is everything a filter can read, so it covers every filter here, on `/v1/s
 escape such as `%ZZ`) is read by nothing and never reaches the database: it answers as if absent, as
 on 0.8.1.
 
-**Lists (AOC-064).** `rarity`, `equip_location`, `armour_weight`, `class`, `currency`, `set` and
-`place` each take **several values**, repeated (`?rarity=epic&rarity=rare`), comma-separated
+**Lists (AOC-064).** `rarity`, `equip_location`, `armour_weight`, `class`, `used_by` (AOC-081),
+`currency`, `set` and `place` each take **several values**, repeated (`?rarity=epic&rarity=rare`), comma-separated
 (`?rarity=epic,rare`) or both. Each value is counted once, and empty elements are dropped. An item
 matches **any** value of a filter and **every** filter. `item_type`, `region` and `tier` take one
 value (the first). ⚠️ **Changed in 0.5.0:** until then a repeated `rarity` (or slot, weight, class,
@@ -249,8 +262,8 @@ the only answers that change are those to requests that named two values, which 
 
 With several values in a group, a facet's count is still "items with this value under the other
 filters". For a facet that holds one value per item (rarity, armour weight, set), the total for
-several ticked values is exactly the sum of their counts. For slot, class and currency it is
-their union.
+several ticked values is exactly the sum of their counts. For slot, class, `used_by` and currency
+it is their union.
 
 **The source panel's filter (AOC-050), additive.** Without `tab`, `source` or `get` every answer is
 byte-identical to 0.5.0's.
@@ -494,7 +507,7 @@ changed slug on an indexed page throws away its ranking and breaks every link ev
 | Method | Path | Returns |
 |---|---|---|
 | GET | `/` | Home page, HTML |
-| GET | `/armory` | **The Armory list** (AOC-047): `q` (name or id), `sort` (`ilvl` default here, `name`, `id`), `p` (1-based, 50 rows), and **every `/v1/items` filter** (AOC-049; since AOC-065 the pane is exactly the validated design's: rarity, slot, armour weight and class as checkboxes and toggle chips, several at once (AOC-064), and the item level as two sliders. Every other filter — required level, vendor price, currency, set, and the rest — rides along as a hidden input and shows as a pill, one per value, worded as the design's (`rarity: Epic`, `class: Conq`, `ilvl 60–90`, `q: …`)). Same parser and service as `/v1/items`, always with the facet counts. Every link on the page (pager, sort, chips, canonical) carries the whole state; the default sort and `p=1` stay out of it. `HX-Request: true` gets `armory_update` — the rows, plus the pane, the pills and both active counts out of band — with `HX-Push-Url` set to the state's canonical URL (`HX-Replace-Url` instead when `HX-Current-URL` names the same state: one history entry per state); both answers send `Vary: HX-Request`. A request whose reader went away (an aborted live request: its own context canceled) is logged as 499, not an error; a database failure stays a 500. `p` past the end is 404; a bad `p`, `sort`, level or boolean, or an empty range, is 400 — as dependency-free HTML (`httpx.RejectHTML`) naming the reason; to an `HX-Request` a malformed filter is a **400 `armory_invalid` fragment** (the reason, for `#results`; `HX-Push-Url: false`). An unknown slug is not rejected: it shows as a chip, over the empty state. **Since AOC-068 the sources panel**: `tab` (the active main category, absent = the first; it filters nothing), `source` and `get` (the picked branch, as `/v1/items` reads them). The tabs, the tree, the selected-source box and its counts come back out of band too, and the pick is a `source: …` pill. An unknown `tab` is a 404. **Since AOC-051 the gear builder** rides on the same URL: `gear`, `gear_class` and `gear_id` exactly as `/v1/builds/compute` reads them (`gear_id`, the island's name for a kept build, rides on every link and is left out of the share link). The pane is the build's, opened on load when the URL carries one (`gear=` alone opens an empty one), and every link on the page carries it. **The canonical never does**: build URLs are not indexed apart from the list they sit on. A state with a build is titled "Gear build — Armory" with its items in the description. **`add`** is an action, not state: `add=<item id>` (the server picks the slot: the first free one the item fits, else the first it fits) or `add=<slot>:<item id>` (a drop). Accepted, a plain GET gets a **303** to the state's own URL; htmx gets the update with that URL in `HX-Push-Url`. Refused (no slot; does not go in that slot; the hand is held by a two-hander; the class cannot wear it), the unchanged state with the reason in the pane, which opens. A malformed or unknown slot, class or `add` is a 400 like any malformed filter |
+| GET | `/armory` | **The Armory list** (AOC-047): `q` (name or id), `sort` (`ilvl` default here, `name`, `id`), `p` (1-based, 50 rows), and **every `/v1/items` filter** (AOC-049; since AOC-065 the pane is exactly the validated design's: rarity, slot, armour weight and class as checkboxes and toggle chips, several at once (AOC-064), and the item level as two sliders; since AOC-081 the class chips set `used_by` (what the class uses), and `class` (restricted to) is a pill, `restricted: DT`. Every other filter — required level, vendor price, currency, set, and the rest — rides along as a hidden input and shows as a pill, one per value, worded as the design's (`rarity: Epic`, `class: Conq`, `ilvl 60–90`, `q: …`)). Same parser and service as `/v1/items`, always with the facet counts. Every link on the page (pager, sort, chips, canonical) carries the whole state; the default sort and `p=1` stay out of it. `HX-Request: true` gets `armory_update` — the rows, plus the pane, the pills and both active counts out of band — with `HX-Push-Url` set to the state's canonical URL (`HX-Replace-Url` instead when `HX-Current-URL` names the same state: one history entry per state); both answers send `Vary: HX-Request`. A request whose reader went away (an aborted live request: its own context canceled) is logged as 499, not an error; a database failure stays a 500. `p` past the end is 404; a bad `p`, `sort`, level or boolean, or an empty range, is 400 — as dependency-free HTML (`httpx.RejectHTML`) naming the reason; to an `HX-Request` a malformed filter is a **400 `armory_invalid` fragment** (the reason, for `#results`; `HX-Push-Url: false`). An unknown slug is not rejected: it shows as a chip, over the empty state. **Since AOC-068 the sources panel**: `tab` (the active main category, absent = the first; it filters nothing), `source` and `get` (the picked branch, as `/v1/items` reads them). The tabs, the tree, the selected-source box and its counts come back out of band too, and the pick is a `source: …` pill. An unknown `tab` is a 404. **Since AOC-051 the gear builder** rides on the same URL: `gear`, `gear_class` and `gear_id` exactly as `/v1/builds/compute` reads them (`gear_id`, the island's name for a kept build, rides on every link and is left out of the share link). The pane is the build's, opened on load when the URL carries one (`gear=` alone opens an empty one), and every link on the page carries it. **The canonical never does**: build URLs are not indexed apart from the list they sit on. A state with a build is titled "Gear build — Armory" with its items in the description. **`add`** is an action, not state: `add=<item id>` (the server picks the slot: the first free one the item fits, else the first it fits) or `add=<slot>:<item id>` (a drop). Accepted, a plain GET gets a **303** to the state's own URL; htmx gets the update with that URL in `HX-Push-Url`. Refused (no slot; does not go in that slot; the hand is held by a two-hander; the class cannot wear it), the unchanged state with the reason in the pane, which opens. A malformed or unknown slot, class or `add` is a 400 like any malformed filter |
 | POST | `/armory` | **The gear builder's "+" without JavaScript** (AOC-101): the same handler as `GET /armory`. The state is the URL (the address the reader is on: the "+" buttons belong to the page's `<form id="gear-add" method="post">`, which has no `action`); the add is the **body's** `add=<id>` or `add=<slot>:<id>`, never the query string's. Body capped at **1 KiB**. Added: **303** to the new state's own URL, the one `GET …&add=` gives. Refused (does not fit, a class conflict, …): the page with the reason, **200**. No `add` in the body, an empty or malformed one (`abc`, a NUL byte), or a body that cannot be read or is over the cap: **400**, never a 500. `no-store`, like every write. Writes nothing on the server and reads no cookie, so it carries no CSRF token |
 | GET | `/armory/{slug}` | **The item page** (AOC-048): one item from `items.Service.Get` — the call `/v1/items/{slug}` makes. Stats as text beside the tooltip image, the set with its other pieces linked, sources grouped by each row's own acquisition type. `<title>` "{name} — AoC Codex", canonical `/armory/{slug}`, `og:image` = the tooltip image with `twitter:card` `summary` (it is portrait), one JSON-LD `Thing`. An unknown slug is a **404** as dependency-free HTML, `s-maxage=60`. **The same bytes for every reader** — nothing is read from the Referer; the back link's "return to your search" happens in the browser. The list's rows link here |
 | GET | `/aa`, `/feats`, `/dj-raids`, `/more` | **Coming Soon pages** (Pierre, 2026-10-01): the design's header tabs, shown before their sections exist. Each says only that the section is not built. **`noindex`**, canonical to itself, **not in the sitemap**. A section that ships takes over its URL (or 301s it, rule 5c) |

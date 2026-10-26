@@ -199,6 +199,10 @@ var fakeFacetRows = []sqlcgen.CountItemFacetsRow{
 	{Facet: "rarity", Slug: "epic", Name: "Test Epic", ColourToken: "rarity-epic", Ord: 1, Items: 120},
 	{Facet: "rarity", Slug: "test-rarity-dull", Name: "Test Rarity Dull", Ord: 2, Items: 0},
 	{Facet: "set", Slug: "test-set-omega", Name: "Test Set Omega", Ord: 1, Items: 3},
+	// AOC-081: what a class uses, counted apart from what is restricted to it — so a page that drew
+	// the class counts on the chips is caught.
+	{Facet: "used_by", Slug: "test-class", Name: "Test Class", ShortName: "TC", Ord: 1, Items: 25},
+	{Facet: "used_by", Slug: "test-class-two", Name: "Test Class Two", ShortName: "TC2", Ord: 2, Items: 4},
 }
 
 func (f *fakeItems) CountItemFacets(context.Context, sqlcgen.CountItemFacetsParams) ([]sqlcgen.CountItemFacetsRow, error) {
@@ -208,7 +212,7 @@ func (f *fakeItems) CountItemFacets(context.Context, sqlcgen.CountItemFacetsPara
 func (f *fakeItems) ItemFacetTotals(context.Context, sqlcgen.ItemFacetTotalsParams) (sqlcgen.ItemFacetTotalsRow, error) {
 	n := int64(len(f.rows))
 	return sqlcgen.ItemFacetTotalsRow{
-		AnyRarity: n, AnyEquipLocation: n, AnyArmourWeight: n, AnyClass: n, AnyCurrency: n, AnySet: n,
+		AnyRarity: n, AnyEquipLocation: n, AnyArmourWeight: n, AnyClass: n, AnyUsedBy: n, AnyCurrency: n, AnySet: n,
 		AnyPrice: n, Priced: 1, IlvlN: n / 2, IlvlLo: 80, IlvlHi: 80,
 	}, nil
 }

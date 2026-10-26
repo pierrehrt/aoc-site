@@ -29,7 +29,7 @@ import (
 // everyFilter is a state with every filter the parser accepts set — the page's links and its form
 // must carry all of them.
 const everyFilter = "q=Item&rarity=epic&item_type=test-type&equip_location=test-slot-head&armour_weight=test-weight-light" +
-	"&class=test-class&region=test-region&tier=test-tier&place=test-cave&place=test-lair&pvp=true&unchained=false" +
+	"&class=test-class&used_by=test-class&region=test-region&tier=test-tier&place=test-cave&place=test-lair&pvp=true&unchained=false" +
 	"&ilvl_min=10&ilvl_max=90&reqlvl_min=5&reqlvl_max=80&price=true&currency=test-token&set=test-set-omega&sort=name"
 
 func TestTheRailIsAFormThatWorksWithoutJavaScript(t *testing.T) {
@@ -39,11 +39,13 @@ func TestTheRailIsAFormThatWorksWithoutJavaScript(t *testing.T) {
 		// AOC-064: the facets are checkbox groups (several may be ticked; none ticked is any) —
 		// no "Any" choice, nothing ticked by default
 		`<input type="checkbox" id="f-rarity-epic" name="rarity" value="epic" data-count="120" class="peer sr-only">`,
-		`id="f-equip_location-test-slot-head"`, `id="f-armour_weight-test-weight-light"`, `id="f-class-test-class"`,
+		`id="f-equip_location-test-slot-head"`, `id="f-armour_weight-test-weight-light"`, `id="f-used_by-test-class"`,
 		// the item level as two stacked sliders, with the design's note
 		`id="f-ilvl_min-range"`, `id="f-ilvl_max-range"`, "items with no recorded level drop out once narrowed",
-		// a class shows its short name and says its full name to a screen reader
+		// a class shows its short name and says its full name to a screen reader; its chip is what
+		// the class USES (AOC-081): used_by, with used_by's count, never class's
 		`<span aria-hidden="true">TC</span><span class="sr-only">Test Class</span>`,
+		`<input type="checkbox" id="f-used_by-test-class" name="used_by" value="test-class" data-count="25"`,
 		// the submit carries the result count (design 1b)
 		`>Show 120 items</button>`,
 		// fieldsets with legends: a group's semantic container
@@ -295,7 +297,7 @@ func TestThePageAndTheJSONShowTheSameCounts(t *testing.T) {
 		}
 		want := map[string]int64{} // "param=value" -> count, from the JSON — for the design's four groups
 		for param, g := range map[string]items.FacetGroup{"rarity": env.Facets.Rarity, "equip_location": env.Facets.EquipLocation,
-			"armour_weight": env.Facets.ArmourWeight, "class": env.Facets.Class} {
+			"armour_weight": env.Facets.ArmourWeight, "used_by": env.Facets.UsedBy} {
 			for _, v := range g.Values {
 				want[param+"="+v.Slug] = v.Count
 			}
@@ -416,11 +418,11 @@ func TestHTMXIsToldToSwapA400(t *testing.T) {
 // AOC-064: several values in a group — both boxes ticked, one chip each, and each chip's × removes
 // only its own value (the others, and the other filters, stay).
 func TestSeveralValuesAreTickedAndEachIsItsOwnChip(t *testing.T) {
-	body := get(t, router(t), http.MethodGet, "/armory?rarity=epic&rarity=test-rarity-dull&class=test-class&sort=name", nil, "").Body.String()
+	body := get(t, router(t), http.MethodGet, "/armory?rarity=epic&rarity=test-rarity-dull&used_by=test-class&sort=name", nil, "").Body.String()
 	for _, want := range []string{
 		`<input type="checkbox" id="f-rarity-epic" name="rarity" value="epic" checked`,
 		`<input type="checkbox" id="f-rarity-test-rarity-dull" name="rarity" value="test-rarity-dull" checked`,
-		`<input type="checkbox" id="f-class-test-class" name="class" value="test-class" checked`,
+		`<input type="checkbox" id="f-used_by-test-class" name="used_by" value="test-class" checked`,
 		`<span id="filter-count"> · 3</span>`,
 	} {
 		if !strings.Contains(body, want) {
@@ -445,7 +447,7 @@ func TestSeveralValuesAreTickedAndEachIsItsOwnChip(t *testing.T) {
 		if strings.Join(q["rarity"], ",") != strings.Join(want, ",") {
 			t.Errorf("chip %q leaves rarity=%v, want %v", label, q["rarity"], want)
 		}
-		if q.Get("class") != "test-class" || q.Get("sort") != "name" {
+		if q.Get("used_by") != "test-class" || q.Get("sort") != "name" {
 			t.Errorf("chip %q drops another filter: %s", label, c[1])
 		}
 	}
@@ -549,6 +551,24 @@ func TestTheOtherFiltersStillApplyAsPills(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("missing %q", want)
 		}
+	}
+}
+
+// AOC-081: an old class= link (restricted to) keeps its answer and shows as a pill, "restricted: TC";
+// the chips are used_by, and none is ticked by it.
+func TestAClassLinkIsARestrictedPillNotAChip(t *testing.T) {
+	body := get(t, router(t), http.MethodGet, "/armory?class=test-class", nil, "").Body.String()
+	for _, want := range []string{
+		`<input type="hidden" name="class" value="test-class">`,
+		`aria-label="Remove the filter restricted: TC"`,
+		`<input type="checkbox" id="f-used_by-test-class" name="used_by" value="test-class" data-count="25" class="peer sr-only">`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("missing %q", want)
+		}
+	}
+	if strings.Contains(body, `name="class" value="test-class" checked`) || strings.Contains(body, `name="used_by" value="test-class" checked`) {
+		t.Error("a class= link ticked a chip: the chips are used_by")
 	}
 }
 
@@ -660,12 +680,12 @@ func TestThePanesUnknownChipsAreSorted(t *testing.T) {
 	order := func(q string) string {
 		body := get(t, h, http.MethodGet, "/armory?"+q, nil, "").Body.String()
 		var out []string
-		for _, m := range regexp.MustCompile(`id="f-class-unknown-\d+" name="class" value="([^"]+)"`).FindAllStringSubmatch(body, -1) {
+		for _, m := range regexp.MustCompile(`id="f-used_by-unknown-\d+" name="used_by" value="([^"]+)"`).FindAllStringSubmatch(body, -1) {
 			out = append(out, m[1])
 		}
 		return strings.Join(out, ",")
 	}
-	if a, b := order("class=zz-cls&class=aa-cls"), order("class=aa-cls&class=zz-cls"); a != b || a != "aa-cls,zz-cls" {
+	if a, b := order("used_by=zz-cls&used_by=aa-cls"), order("used_by=aa-cls&used_by=zz-cls"); a != b || a != "aa-cls,zz-cls" {
 		t.Errorf("the pane's unknown chips: %q and %q, want aa-cls,zz-cls", a, b)
 	}
 }

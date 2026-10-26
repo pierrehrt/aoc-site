@@ -25,6 +25,7 @@ type Facets struct {
 	EquipLocation FacetGroup `json:"equip_location"`
 	ArmourWeight  FacetGroup `json:"armour_weight"`
 	Class         FacetGroup `json:"class"`
+	UsedBy        FacetGroup `json:"used_by"`
 	Currency      FacetGroup `json:"currency"`
 	Set           FacetGroup `json:"set"`
 	Price         PriceFacet `json:"price"`
@@ -79,6 +80,7 @@ func facetParams(p sqlcgen.ListItemsParams) sqlcgen.CountItemFacetsParams {
 		EquipLocations: p.EquipLocations,
 		ArmourWeights:  p.ArmourWeights,
 		Classes:        p.Classes,
+		UsedBy:         p.UsedBy,
 		IlvlMin:        p.IlvlMin,
 		IlvlMax:        p.IlvlMax,
 		ReqlvlMin:      p.ReqlvlMin,
@@ -117,6 +119,7 @@ func (s *Service) facets(ctx context.Context, p sqlcgen.CountItemFacetsParams) (
 		EquipLocation: FacetGroup{Any: tot.AnyEquipLocation, Values: []FacetValue{}},
 		ArmourWeight:  FacetGroup{Any: tot.AnyArmourWeight, Values: []FacetValue{}},
 		Class:         FacetGroup{Any: tot.AnyClass, Values: []FacetValue{}},
+		UsedBy:        FacetGroup{Any: tot.AnyUsedBy, Values: []FacetValue{}},
 		Currency:      FacetGroup{Any: tot.AnyCurrency, Values: []FacetValue{}},
 		Set:           FacetGroup{Any: tot.AnySet, Values: []FacetValue{}},
 		Price:         PriceFacet{Any: tot.AnyPrice, Count: tot.Priced},
@@ -124,7 +127,7 @@ func (s *Service) facets(ctx context.Context, p sqlcgen.CountItemFacetsParams) (
 	// The facet names the SQL emits are the parameter names.
 	groups := map[string]*FacetGroup{
 		"rarity": &out.Rarity, "equip_location": &out.EquipLocation, "armour_weight": &out.ArmourWeight,
-		"class": &out.Class, "currency": &out.Currency, "set": &out.Set,
+		"class": &out.Class, "used_by": &out.UsedBy, "currency": &out.Currency, "set": &out.Set,
 	}
 	for _, r := range rows {
 		g, ok := groups[r.Facet]

@@ -268,6 +268,13 @@ WITH filtered AS (
            SELECT 1 FROM item_classes ic
            JOIN classes cl ON cl.id = ic.class_id
            WHERE ic.item_id = i.item_id AND cl.slug = ANY(sqlc.narg('classes')::varchar[]))) AS in_class,
+         -- What a class USES (AOC-081), beside what is restricted to it: the view item_used_by is the
+         -- rule's one statement (restricted to the class, or restricted to nobody and of a weight or
+         -- type the class uses). class= keeps "restricted to", above.
+         (sqlc.narg('used_by')::varchar[] IS NULL OR EXISTS (
+           SELECT 1 FROM item_used_by ub
+           JOIN classes ucl ON ucl.id = ub.class_id
+           WHERE ub.item_id = i.item_id AND ucl.slug = ANY(sqlc.narg('used_by')::varchar[]))) AS in_used_by,
          -- A bound excludes an item with no level: it cannot be shown to be inside the range.
          coalesce((sqlc.narg('ilvl_min')::integer IS NULL OR i.item_level >= sqlc.narg('ilvl_min')::integer)
               AND (sqlc.narg('ilvl_max')::integer IS NULL OR i.item_level <= sqlc.narg('ilvl_max')::integer), false) AS in_ilvl,
@@ -310,7 +317,7 @@ LEFT JOIN item_types it ON it.id = i.item_type_id
 JOIN confidence_levels c ON c.id = i.confidence_id
 LEFT JOIN slot_fits sf ON sf.id = i.slot_fit_id
 LEFT JOIN armour_weights aw ON aw.id = i.armour_weight_id
-WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set
+WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_used_by AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set
 -- ⭐ ONE query, three orders (AOC-047). A CASE per sort key keeps every filter above in one
 -- place; the keys are code ('name', 'ilvl', 'id' — not a game concept), validated before they
 -- get here. ilvl is DESCENDING with NULLs LAST, so the 50 items with no recorded level end the
@@ -433,6 +440,13 @@ WITH filtered AS MATERIALIZED (
            SELECT 1 FROM item_classes ic
            JOIN classes cl ON cl.id = ic.class_id
            WHERE ic.item_id = i.item_id AND cl.slug = ANY(sqlc.narg('classes')::varchar[]))) AS in_class,
+         -- What a class USES (AOC-081), beside what is restricted to it: the view item_used_by is the
+         -- rule's one statement (restricted to the class, or restricted to nobody and of a weight or
+         -- type the class uses). class= keeps "restricted to", above.
+         (sqlc.narg('used_by')::varchar[] IS NULL OR EXISTS (
+           SELECT 1 FROM item_used_by ub
+           JOIN classes ucl ON ucl.id = ub.class_id
+           WHERE ub.item_id = i.item_id AND ucl.slug = ANY(sqlc.narg('used_by')::varchar[]))) AS in_used_by,
          -- A bound excludes an item with no level: it cannot be shown to be inside the range.
          coalesce((sqlc.narg('ilvl_min')::integer IS NULL OR i.item_level >= sqlc.narg('ilvl_min')::integer)
               AND (sqlc.narg('ilvl_max')::integer IS NULL OR i.item_level <= sqlc.narg('ilvl_max')::integer), false) AS in_ilvl,
@@ -464,7 +478,7 @@ SELECT 'rarity'::varchar AS facet, r.slug, r.name, ''::varchar AS short_name,
        row_number() OVER (ORDER BY r.sort_order DESC) AS ord,
        count(DISTINCT f.item_id) AS items
 FROM rarities r
-LEFT JOIN filtered f ON f.rarity_id = r.id AND f.in_base AND f.in_slot AND f.in_weight AND f.in_class AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set
+LEFT JOIN filtered f ON f.rarity_id = r.id AND f.in_base AND f.in_slot AND f.in_weight AND f.in_class AND f.in_used_by AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set
 GROUP BY r.id
 UNION ALL
 SELECT 'equip_location', el.slug, el.name, '', '',
@@ -472,14 +486,14 @@ SELECT 'equip_location', el.slug, el.name, '', '',
        count(DISTINCT f.item_id)
 FROM equip_locations el
 LEFT JOIN item_equip_locations iel ON iel.equip_location_id = el.id
-LEFT JOIN filtered f ON f.item_id = iel.item_id AND f.in_base AND f.in_rarity AND f.in_weight AND f.in_class AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set
+LEFT JOIN filtered f ON f.item_id = iel.item_id AND f.in_base AND f.in_rarity AND f.in_weight AND f.in_class AND f.in_used_by AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set
 GROUP BY el.id
 UNION ALL
 SELECT 'armour_weight', aw.slug, aw.name, '', '',
        row_number() OVER (ORDER BY aw.sort_order DESC),
        count(DISTINCT f.item_id)
 FROM armour_weights aw
-LEFT JOIN filtered f ON f.armour_weight_id = aw.id AND f.in_base AND f.in_rarity AND f.in_slot AND f.in_class AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set
+LEFT JOIN filtered f ON f.armour_weight_id = aw.id AND f.in_base AND f.in_rarity AND f.in_slot AND f.in_class AND f.in_used_by AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set
 GROUP BY aw.id
 UNION ALL
 SELECT 'class', cl.slug, cl.name, coalesce(cl.short_name, ''), '',
@@ -487,7 +501,17 @@ SELECT 'class', cl.slug, cl.name, coalesce(cl.short_name, ''), '',
        count(DISTINCT f.item_id)
 FROM classes cl
 LEFT JOIN item_classes ic ON ic.class_id = cl.id
-LEFT JOIN filtered f ON f.item_id = ic.item_id AND f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set
+LEFT JOIN filtered f ON f.item_id = ic.item_id AND f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_used_by AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set
+GROUP BY cl.id
+UNION ALL
+-- What each class uses (AOC-081), through the same view as the filter, so a count is the list it
+-- promises. A union facet like class: an unrestricted ring is used by all twelve.
+SELECT 'used_by', cl.slug, cl.name, coalesce(cl.short_name, ''), '',
+       row_number() OVER (ORDER BY cl.sort_order NULLS LAST, cl.name),
+       count(DISTINCT f.item_id)
+FROM classes cl
+LEFT JOIN item_used_by ub ON ub.class_id = cl.id
+LEFT JOIN filtered f ON f.item_id = ub.item_id AND f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set
 GROUP BY cl.id
 UNION ALL
 SELECT 'currency', cu.slug, cu.name, '', '',
@@ -496,14 +520,14 @@ SELECT 'currency', cu.slug, cu.name, '', '',
 FROM currencies cu
 LEFT JOIN item_costs ico ON ico.currency_id = cu.id
 LEFT JOIN item_sources src ON src.id = ico.item_source_id
-LEFT JOIN filtered f ON f.item_id = src.item_id AND f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_set
+LEFT JOIN filtered f ON f.item_id = src.item_id AND f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_used_by AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_set
 GROUP BY cu.id
 UNION ALL
 SELECT 'set', st.slug, st.name, '', '',
        row_number() OVER (ORDER BY st.name, st.id),
        count(DISTINCT f.item_id)
 FROM sets st
-LEFT JOIN filtered f ON f.set_id = st.id AND f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_currency
+LEFT JOIN filtered f ON f.set_id = st.id AND f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_used_by AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_currency
 GROUP BY st.id
 ORDER BY facet, ord;
 
@@ -619,6 +643,13 @@ WITH filtered AS MATERIALIZED (
            SELECT 1 FROM item_classes ic
            JOIN classes cl ON cl.id = ic.class_id
            WHERE ic.item_id = i.item_id AND cl.slug = ANY(sqlc.narg('classes')::varchar[]))) AS in_class,
+         -- What a class USES (AOC-081), beside what is restricted to it: the view item_used_by is the
+         -- rule's one statement (restricted to the class, or restricted to nobody and of a weight or
+         -- type the class uses). class= keeps "restricted to", above.
+         (sqlc.narg('used_by')::varchar[] IS NULL OR EXISTS (
+           SELECT 1 FROM item_used_by ub
+           JOIN classes ucl ON ucl.id = ub.class_id
+           WHERE ub.item_id = i.item_id AND ucl.slug = ANY(sqlc.narg('used_by')::varchar[]))) AS in_used_by,
          -- A bound excludes an item with no level: it cannot be shown to be inside the range.
          coalesce((sqlc.narg('ilvl_min')::integer IS NULL OR i.item_level >= sqlc.narg('ilvl_min')::integer)
               AND (sqlc.narg('ilvl_max')::integer IS NULL OR i.item_level <= sqlc.narg('ilvl_max')::integer), false) AS in_ilvl,
@@ -646,20 +677,21 @@ WITH filtered AS MATERIALIZED (
     WHERE src.item_id = i.item_id) AS priced) pr
 )
 SELECT
-  count(*) FILTER (WHERE f.in_base AND f.in_slot AND f.in_weight AND f.in_class AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set) AS any_rarity,
-  count(*) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_weight AND f.in_class AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set) AS any_equip_location,
-  count(*) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_class AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set) AS any_armour_weight,
-  count(*) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set) AS any_class,
-  count(*) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_set) AS any_currency,
-  count(*) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_currency) AS any_set,
-  count(*) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_ilvl AND f.in_reqlvl AND f.in_currency AND f.in_set) AS any_price,
-  count(*) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_ilvl AND f.in_reqlvl AND f.in_currency AND f.in_set AND f.priced) AS priced,
-  count(f.item_level) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set) AS ilvl_n,
-  coalesce(min(f.item_level) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set), 0)::integer AS ilvl_lo,
-  coalesce(max(f.item_level) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set), 0)::integer AS ilvl_hi,
-  count(f.requires_level) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_ilvl AND f.in_price AND f.in_currency AND f.in_set) AS reqlvl_n,
-  coalesce(min(f.requires_level) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_ilvl AND f.in_price AND f.in_currency AND f.in_set), 0)::integer AS reqlvl_lo,
-  coalesce(max(f.requires_level) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_ilvl AND f.in_price AND f.in_currency AND f.in_set), 0)::integer AS reqlvl_hi
+  count(*) FILTER (WHERE f.in_base AND f.in_slot AND f.in_weight AND f.in_class AND f.in_used_by AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set) AS any_rarity,
+  count(*) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_weight AND f.in_class AND f.in_used_by AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set) AS any_equip_location,
+  count(*) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_class AND f.in_used_by AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set) AS any_armour_weight,
+  count(*) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_used_by AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set) AS any_class,
+  count(*) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set) AS any_used_by,
+  count(*) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_used_by AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_set) AS any_currency,
+  count(*) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_used_by AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_currency) AS any_set,
+  count(*) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_used_by AND f.in_ilvl AND f.in_reqlvl AND f.in_currency AND f.in_set) AS any_price,
+  count(*) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_used_by AND f.in_ilvl AND f.in_reqlvl AND f.in_currency AND f.in_set AND f.priced) AS priced,
+  count(f.item_level) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_used_by AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set) AS ilvl_n,
+  coalesce(min(f.item_level) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_used_by AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set), 0)::integer AS ilvl_lo,
+  coalesce(max(f.item_level) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_used_by AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set), 0)::integer AS ilvl_hi,
+  count(f.requires_level) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_used_by AND f.in_ilvl AND f.in_price AND f.in_currency AND f.in_set) AS reqlvl_n,
+  coalesce(min(f.requires_level) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_used_by AND f.in_ilvl AND f.in_price AND f.in_currency AND f.in_set), 0)::integer AS reqlvl_lo,
+  coalesce(max(f.requires_level) FILTER (WHERE f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_used_by AND f.in_ilvl AND f.in_price AND f.in_currency AND f.in_set), 0)::integer AS reqlvl_hi
 FROM filtered f;
 
 -- name: ListItemPageEquipLocations :many
@@ -914,6 +946,13 @@ WITH filtered AS (
            SELECT 1 FROM item_classes ic
            JOIN classes cl ON cl.id = ic.class_id
            WHERE ic.item_id = i.item_id AND cl.slug = ANY(sqlc.narg('classes')::varchar[]))) AS in_class,
+         -- What a class USES (AOC-081), beside what is restricted to it: the view item_used_by is the
+         -- rule's one statement (restricted to the class, or restricted to nobody and of a weight or
+         -- type the class uses). class= keeps "restricted to", above.
+         (sqlc.narg('used_by')::varchar[] IS NULL OR EXISTS (
+           SELECT 1 FROM item_used_by ub
+           JOIN classes ucl ON ucl.id = ub.class_id
+           WHERE ub.item_id = i.item_id AND ucl.slug = ANY(sqlc.narg('used_by')::varchar[]))) AS in_used_by,
          -- A bound excludes an item with no level: it cannot be shown to be inside the range.
          coalesce((sqlc.narg('ilvl_min')::integer IS NULL OR i.item_level >= sqlc.narg('ilvl_min')::integer)
               AND (sqlc.narg('ilvl_max')::integer IS NULL OR i.item_level <= sqlc.narg('ilvl_max')::integer), false) AS in_ilvl,
@@ -959,7 +998,7 @@ SELECT DISTINCT src.item_id,
        -- Whether the item passes every other filter. The tree's SHAPE is every row of the tab, so a
        -- branch the filters empty is still listed with its 0, never hidden (the rail's rule); only
        -- the rows that match are counted.
-       (f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set)::boolean AS matches
+       (f.in_base AND f.in_rarity AND f.in_slot AND f.in_weight AND f.in_class AND f.in_used_by AND f.in_ilvl AND f.in_reqlvl AND f.in_price AND f.in_currency AND f.in_set)::boolean AS matches
 FROM filtered f
 JOIN item_sources src ON src.item_id = f.item_id
 JOIN sections sc ON sc.id = src.section_id

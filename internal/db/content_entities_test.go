@@ -68,6 +68,8 @@ func TestTheSeededCountsAreWhatWasMeasured(t *testing.T) {
 		"archetypes": 4, "classes": 12, "rarities": 6, "armour_weights": 5,
 		"item_types": 30, "equip_locations": 14, "currencies": 24, "acquisition_types": 3,
 		"tiers": 10, "bindings": 3, "factions": 14,
+		// what each class uses (AOC-081, Pierre's table of 2026-10-14)
+		"class_armour_weights": 15, "class_item_types": 115,
 		// place entities
 		"confidence_levels": 4, "regions": 8, "maps": 26, "places": 86,
 		"bosses": 44, "quests": 51, "containers": 2,

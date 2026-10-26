@@ -209,6 +209,7 @@ func treeParams(p sqlcgen.ListItemsParams, tab string) sqlcgen.ListSourceTreeRow
 		EquipLocations: p.EquipLocations,
 		ArmourWeights:  p.ArmourWeights,
 		Classes:        p.Classes,
+		UsedBy:         p.UsedBy,
 		IlvlMin:        p.IlvlMin,
 		IlvlMax:        p.IlvlMax,
 		ReqlvlMin:      p.ReqlvlMin,

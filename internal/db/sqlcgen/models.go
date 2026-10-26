@@ -63,6 +63,16 @@ type Class struct {
 	SortOrder       *int32
 }
 
+type ClassArmourWeight struct {
+	ClassID        int32
+	ArmourWeightID int32
+}
+
+type ClassItemType struct {
+	ClassID    int32
+	ItemTypeID int32
+}
+
 type ConfidenceLevel struct {
 	ID        int32
 	Slug      string
@@ -195,6 +205,11 @@ type ItemType struct {
 	IsEquipment            *bool
 	TwoHanded              *bool
 	OtherHandTypeID        *int32
+}
+
+type ItemUsedBy struct {
+	ItemID  int32
+	ClassID int32
 }
 
 type Map struct {
